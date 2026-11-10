@@ -192,7 +192,7 @@ with col2:
     stn_data = station_cache[selected_stn]
     colors = ["#2b83ba", "#d95f02", "#7570b3", "#e7298a"]
     
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=300)
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=600)
     
     for idx_T, T in enumerate(return_periods):
         obs_y = [stn_data["obs"][dur][idx_T] for dur in durations_str]
