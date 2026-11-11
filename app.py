@@ -291,10 +291,11 @@ else:
 st.info(analysis_text)
 st.markdown(feasibility_conclusion)
 # =========================================================
-# 6. DATASET-WIDE ACCEPTABLE PERFORMANCE SUMMARY (1h vs 24h)
+# =========================================================
+# 6. REGIONAL & DATASET-WIDE PERFORMANCE SUMMARY (1h vs 24h)
 # =========================================================
 st.markdown("---")
-st.subheader("📈 Regional/Dataset-Wide Performance Summary (1h vs 24h)")
+st.subheader("📈 Regional Breakdown: Performance Summary (1h vs 24h)")
 
 summary_rows = []
 for stn in common_stations:
@@ -317,24 +318,50 @@ for stn in common_stations:
         "Region": stn_curves["region"],
         "Mean_PBIAS_1h": mean_pb_1h,
         "Mean_PBIAS_24h": mean_pb_24h,
-        "Accepted_1h": abs(mean_pb_1h) < 15.0 if not np.isnan(mean_pb_1h) else False,
-        "Accepted_24h": abs(mean_pb_24h) < 15.0 if not np.isnan(mean_pb_24h) else False
+        "Passed_1h": abs(mean_pb_1h) <= 20.0 if not np.isnan(mean_pb_1h) else False,
+        "Passed_24h": abs(mean_pb_24h) <= 20.0 if not np.isnan(mean_pb_24h) else False
     })
 
 df_summary = pd.DataFrame(summary_rows)
 
-total_valid_stns = len(df_summary)
-pct_1h = (df_summary["Accepted_1h"].sum() / total_valid_stns) * 100 if total_valid_stns > 0 else 0
-pct_24h = (df_summary["Accepted_24h"].sum() / total_valid_stns) * 100 if total_valid_stns > 0 else 0
+# Group by Region to generate regional statistics
+regional_stats = []
+for region_name, group in df_summary.groupby("Region"):
+    n_stns = len(group)
+    
+    passed_1h_count = group["Passed_1h"].sum()
+    failed_1h_count = n_stns - passed_1h_count
+    pass_pct_1h = (passed_1h_count / n_stns) * 100 if n_stns > 0 else 0
+    fail_pct_1h = (failed_1h_count / n_stns) * 100 if n_stns > 0 else 0
+    
+    passed_24h_count = group["Passed_24h"].sum()
+    failed_24h_count = n_stns - passed_24h_count
+    pass_pct_24h = (passed_24h_count / n_stns) * 100 if n_stns > 0 else 0
+    fail_pct_24h = (failed_24h_count / n_stns) * 100 if n_stns > 0 else 0
+    
+    regional_stats.append({
+        "Region / Regime": region_name,
+        "Total Stations": n_stns,
+        "1h Passed (Count / %)": f"{passed_1h_count} ({pass_pct_1h:.1f}%)",
+        "1h Failed (Count / %)": f"{failed_1h_count} ({fail_pct_1h:.1f}%)",
+        "24h Passed (Count / %)": f"{passed_24h_count} ({pass_pct_24h:.1f}%)",
+        "24h Failed (Count / %)": f"{failed_24h_count} ({fail_pct_24h:.1f}%)"
+    })
 
-st.write(f"Evaluated across **{total_valid_stns} stations** (Acceptance threshold defined as $|\text{{PBIAS}}| < 15\%$):")
+df_regional_table = pd.DataFrame(regional_stats)
 
-col_sum1, col_sum2 = st.columns(2)
-with col_sum1:
-    st.metric(label="Accepted Stations (1-hr Duration)", value=f"{pct_1h:.1f}%", help="Percentage of stations showing acceptable bias for 1-hr design storms.")
-with col_sum2:
-    st.metric(label="Accepted Stations (24-hr Duration)", value=f"{pct_24h:.1f}%", help="Percentage of stations showing acceptable bias for 24-hr design storms.")
+st.write("Regional performance breakdown (Acceptance criteria: $|\text{PBIAS}| \le 20\%$):")
+st.dataframe(df_regional_table, use_container_width=True)
+
+# Overall dataset totals
+total_stns = len(df_summary)
+tot_p1h = df_summary["Passed_1h"].sum()
+tot_f1h = total_stns - tot_p1h
+tot_p24h = df_summary["Passed_24h"].sum()
+tot_f24h = total_stns - tot_p24h
 
 st.markdown(
-    f"**Dataset Conclusion:** Only **{pct_1h:.1f}%** of stations demonstrate acceptable ERA5-Land representation at the 1-hour duration due to sub-daily convective underestimation. Conversely, performance improves significantly at longer durations, with **{pct_24h:.1f}%** of stations showing acceptable agreement for 24-hour design storm accumulations."
+    f"**Overall Dataset Summary ({total_stns} stations total):**\n"
+    f"- **1-hr Duration:** {tot_p1h} stations passed ({(tot_p1h/total_stns)*100:.1f}%), {tot_f1h} stations failed ({(tot_f1h/total_stns)*100:.1f}%).\n"
+    f"- **24-hr Duration:** {tot_p24h} stations passed ({(tot_p24h/total_stns)*100:.1f}%), {tot_f24h} stations failed ({(tot_f24h/total_stns)*100:.1f}%)."
 )
