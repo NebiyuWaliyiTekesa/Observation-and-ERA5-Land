@@ -24,13 +24,6 @@ st.info(
 # =========================================================
 # 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
 # =========================================================
-#st.sidebar.header("📁 Data Source Status")
-#st.sidebar.success("Files loaded automatically from repository!")
-
-#st.sidebar.markdown("---")
-#st.sidebar.header("Advanced Options")
-#show_ci = st.sidebar.checkbox("Show 90% Bootstrap Confidence Intervals", value=False)
-
 durations_str = ["1h", "3h", "6h", "12h", "24h"]
 dur_hours = np.array([1, 3, 6, 12, 24])
 thresholds = {"1h": 300, "3h": 500, "6h": 600, "12h": 800, "24h": 1000}
@@ -74,6 +67,12 @@ code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 
 elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
 df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
 
+lat_candidates = [c for c in df_meta.columns if c.lower() in ['lat', 'latitude', 'y']]
+lat_col = lat_candidates[0] if lat_candidates else None
+
+lon_candidates = [c for c in df_meta.columns if c.lower() in ['lon', 'long', 'longitude', 'x']]
+lon_col = lon_candidates[0] if lon_candidates else None
+
 region_col_candidates = [c for c in df_meta.columns if c.lower() in ['region', 'zone', 'area', 'province', 'basin']]
 has_region_col = len(region_col_candidates) > 0
 reg_col = region_col_candidates[0] if has_region_col else None
@@ -91,6 +90,9 @@ def map_elevation_class(val):
         return 'Unknown'
 
 raw_elev_map = dict(zip(df_meta[code_col], df_meta[elev_col]))
+raw_lat_map = dict(zip(df_meta[code_col], df_meta[lat_col])) if lat_col else {}
+raw_lon_map = dict(zip(df_meta[code_col], df_meta[lon_col])) if lon_col else {}
+
 if has_region_col:
     region_map = dict(zip(df_meta[code_col], df_meta[reg_col].astype(str)))
 else:
@@ -144,6 +146,8 @@ def precompute_station_curves(station_list):
             "obs": obs_curves,
             "era": era_curves,
             "elev": raw_elev_map.get(stn, "N/A"),
+            "lat": raw_lat_map.get(stn, "N/A"),
+            "lon": raw_lon_map.get(stn, "N/A"),
             "region": region_map.get(stn, "Unknown")
         }
     return cache
@@ -204,7 +208,7 @@ with col2:
     ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
     ax.grid(True, which="both", ls="--", alpha=0.3)
     
-ax.set_title(
+    ax.set_title(
         f"Station: {selected_stn} | Region: {stn_data['region']} | Elev: {stn_data['elev']} m | Lat: {stn_data['lat']}°, Lon: {stn_data['lon']}°",
         fontsize=10,
         fontweight='bold'
@@ -275,8 +279,8 @@ pbias_24h = df_results[df_results["Duration"] == "24h"]["PBIAS_pct"].mean()
 analysis_text = f"""
 For station **{selected_stn}**, the comparison between ground station observations and ERA5-Land reanalysis design return levels highlights distinct duration-dependent behaviors:
 
-* **Short-Duration Performance (1h – 3h):** ERA5-Land exhibits pronounced underestimation, with average biases dropping significantly (e.g., around **{pbias_1h:.1f}%** for 1-hour accumulation). This limitation is primarily driven by reanalysis grid-cell averaging and the coarse spatial/temporal representation of convective storms, making raw sub-daily extremes unsuitable for direct urban or small-catchment engineering design without rigorous bias correction.
-* **Long-Duration Performance (12h – 24h):** As accumulation periods increase, the representativeness of ERA5-Land improves substantially. At the 24-hour duration, the bias shifts closer to zero (averaging roughly **{pbias_24h:.1f}%**), demonstrating that reanalysis data captures synoptic-scale aggregate precipitation volumes much more reliably.
+- **Short-Duration Performance (1h – 3h):** ERA5-Land exhibits pronounced underestimation, with average biases dropping significantly (e.g., around **{pbias_1h:.1f}%** for 1-hour accumulation). This limitation is primarily driven by reanalysis grid-cell averaging and the coarse spatial/temporal representation of convective storms, making raw sub-daily extremes unsuitable for direct urban or small-catchment engineering design without rigorous bias correction.
+- **Long-Duration Performance (12h – 24h):** As accumulation periods increase, the representativeness of ERA5-Land improves substantially. At the 24-hour duration, the bias shifts closer to zero (averaging roughly **{pbias_24h:.1f}%**), demonstrating that reanalysis data captures synoptic-scale aggregate precipitation volumes much more reliably.
 """
 
 if abs(pbias_24h) < 15.0:
