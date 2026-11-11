@@ -229,7 +229,7 @@ for dur in durations_str:
             "Duration": dur,
             "Return_Period_yr": T,
             "Observed_mm": round(o_val, 2) if not np.isnan(o_val) else np.nan,
-            "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,
+            "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,  # Ensure hyphen matches here
             "PBIAS_pct": round(pb, 2) if not np.isnan(pb) else np.nan
         })
 
@@ -246,7 +246,7 @@ with tab1:
         label=f"📥 Download Raw Return Levels for Station {selected_stn} (CSV)",
         data=csv_data,
         file_name=f"station_{selected_stn}_return_levels.csv",
-        mime="text/css",
+        mime="text/csv",
     )
 
 with tab2:
@@ -257,7 +257,7 @@ with tab2:
         st.dataframe(df_obs_matrix, use_container_width=True)
     with col_era:
         st.markdown("**ERA5-Land Raw Return Levels (mm)**")
-        df_era_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5_Land_mm")
+        df_era_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm")  # Updated to match hyphen
         st.dataframe(df_era_matrix, use_container_width=True)
 
 # =========================================================
