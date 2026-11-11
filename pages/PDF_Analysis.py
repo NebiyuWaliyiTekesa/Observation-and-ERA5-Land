@@ -18,16 +18,13 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 Elevation-Stratified AMP KDE & Statistical Analysis")
+st.title("📊 PDF Analysis")
 
 st.info(
-    "**Methodology & Context:**\n\n"
+    "**Methodology:**\n\n"
     "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design and engineering applications, "
-    "this dashboard evaluates Annual Maximum Precipitation (AMP) probability density functions (KDEs) and statistical summaries "
-    "stratified across elevation classes or individual stations for storm durations ranging from 1h to 24h "
-    "(Soto-Escobar et al., 2026). Crucially, this research demonstrates that relying on generalized regional summaries "
-    "is scientifically insufficient for critical engineering design; rigorous, station-based, site-specific analysis is essential."
-)
+    "this dashboard evaluates whether ERA5-Land captures the upper heavy tails of the Annual Maximum Precipitation (AMP) "  
+    "using PDF analysis and other statistical summaries for individual stations or regions for each storm duration (1-, 3-, 6-, 12-, and 24-hr).")
 
 plt.rcParams.update({
     'font.family': 'sans-serif',
