@@ -213,7 +213,7 @@ with col1:
         
         ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
         ax_map.axis('off')
-        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=2, frameon=False)
+        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=2, frameon=False)
         st.pyplot(fig_map)
     else:
         st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
