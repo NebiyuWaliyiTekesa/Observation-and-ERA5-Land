@@ -284,7 +284,7 @@ For station **{selected_stn}**, the comparison between ground station observatio
 """
 
 if abs(pbias_24h) < 15.0:
-    feasibility_conclusion = f"✅ **Conclusion:** While **unsuitable for short-duration (sub-hourly/hourly) applications** due to severe underestimation, ERA5-Land shows good reliability for **daily (24-hr) cumulative engineering assessments** at this station (Bias ~ {pbias_24h:.1f}%). It can be cautiously used for macro-scale hydrological planning or after applying scaling factors."
+    feasibility_conclusion = f"✅ **Conclusion:** While **unsuitable for short-duration applications** due to severe underestimation, ERA5-Land shows good reliability for **daily (24-hr) cumulative engineering assessments** at this station (Bias ~ {pbias_24h:.1f}%). It can be cautiously used for macro-scale hydrological planning or after applying scaling factors."
 else:
     feasibility_conclusion = f"❌ **Conclusion:** ERA5-Land exhibits noticeable discrepancies across durations at this station (24h bias is ~ {pbias_24h:.1f}%). Direct use for critical design return levels is **not recommended** without local calibration or quantile mapping."
 
