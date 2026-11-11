@@ -6,63 +6,57 @@ import matplotlib.ticker as ticker
 from scipy.stats import genextreme
 import io
 
-st.set_page_config(page_title="Can ERA5-Land data used for Engineering purpose (Design Return Level)?", layout="wide")
+st.set_page_config(page_title="Can ERA5-Land data be used for Engineering purpose (Design Return Level)?", layout="wide")
 
 st.title("🌧️ Can ERA5-Land data be used for Engineering purpose (Design Return Level)?")
 st.write("Automated comparison of Design Return Level derived from **Observed** data and **ERA5-Land** reanalysis.")
 
 # =========================================================
-# 1. SIDEBAR FILE UPLOADERS
+# 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
 # =========================================================
-st.sidebar.header("1. Upload Metadata File")
-locations_file = st.sidebar.file_uploader("Upload locations.xlsx or .csv", type=["xlsx", "xls", "csv"])
+st.sidebar.header("📁 Data Source Status")
+st.sidebar.success("Files loaded automatically from repository!")
 
-st.sidebar.header("2. Upload Observed Duration Files")
-obs_uploaded = {}
-for dur in ["1h", "3h", "6h", "12h", "24h"]:
-    obs_uploaded[dur] = st.sidebar.file_uploader(f"Observed {dur} file", type=["xlsx", "xls", "csv"], key=f"obs_{dur}")
+st.sidebar.markdown("---")
+st.sidebar.header("Advanced Options")
+show_ci = st.sidebar.checkbox("Show 90% Bootstrap Confidence Intervals", value=False)
 
-st.sidebar.header("3. Upload ERA5-Land Duration Files")
-era_uploaded = {}
-for dur in ["1h", "3h", "6h", "12h", "24h"]:
-    era_uploaded[dur] = st.sidebar.file_uploader(f"ERA5-Land {dur} file", type=["xlsx", "xls", "csv"], key=f"era_{dur}")
+durations_str = ["1h", "3h", "6h", "12h", "24h"]
+dur_hours = np.array([1, 3, 6, 12, 24])
+thresholds = {"1h": 300, "3h": 500, "6h": 600, "12h": 800, "24h": 1000}
+return_periods = [20, 50, 100, 200]
 
-# Helper function to read Excel or CSV files from memory
-def read_uploaded_file(uploaded_file):
-    if uploaded_file is None:
-        return None
-    file_name = uploaded_file.name.lower()
-    if file_name.endswith('.csv'):
-        return pd.read_csv(uploaded_file)
-    else:
-        return pd.read_excel(uploaded_file)
-
-def load_and_deduplicate(uploaded_file):
-    df = read_uploaded_file(uploaded_file)
-    if df is None:
-        return None
-    if 'anno' in [str(c).lower() for c in df.columns]:
-        anno_col = [c for c in df.columns if str(c).lower() == 'anno'][0]
-        df = df.set_index(anno_col)
-    else:
-        df = df.set_index(df.columns[0])
+try:
+    df_meta = pd.read_excel("locations.xlsx")
     
-    df.columns = df.columns.astype(str).str.strip()
-    df = df.loc[:, ~df.columns.duplicated(keep="first")]
-    return df
+    obs_dict = {}
+    era_dict = {}
+    
+    for dur in durations_str:
+        obs_file = f"OBS_ARF_corrected_{dur}.xlsx"
+        era_file = f"{dur}hr.xlsx"
+        
+        # Load and deduplicate observation file
+        df_obs = pd.read_excel(obs_file)
+        anno_col_obs = [c for c in df_obs.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_obs.columns] else df_obs.columns[0]
+        df_obs = df_obs.set_index(anno_col_obs)
+        df_obs.columns = df_obs.columns.astype(str).str.strip()
+        obs_dict[dur] = df_obs.loc[:, ~df_obs.columns.duplicated(keep="first")]
+        
+        # Load and deduplicate ERA5 file
+        df_era = pd.read_excel(era_file)
+        anno_col_era = [c for c in df_era.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_era.columns] else df_era.columns[0]
+        df_era = df_era.set_index(anno_col_era)
+        df_era.columns = df_era.columns.astype(str).str.strip()
+        era_dict[dur] = df_era.loc[:, ~df_era.columns.duplicated(keep="first")]
 
-# Check if all essential files are uploaded
-all_obs_ready = all(v is not None for v in obs_uploaded.values())
-all_era_ready = all(v is not None for v in era_uploaded.values())
-
-if not (locations_file and all_obs_ready and all_era_ready):
-    st.info("👈 Please upload your station metadata file and all 5 duration AMP data for both Observed and ERA5-Land in the sidebar to begin.")
+except Exception as e:
+    st.error(f"Error loading files automatically from repository: {e}")
     st.stop()
 
 # =========================================================
 # 2. DATA PROCESSING, MAPPING & COMMON STATIONS
 # =========================================================
-df_meta = read_uploaded_file(locations_file)
 code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
 elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
 df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
@@ -88,14 +82,6 @@ if has_region_col:
     region_map = dict(zip(df_meta[code_col], df_meta[reg_col].astype(str)))
 else:
     region_map = {stn: map_elevation_class(elev) for stn, elev in raw_elev_map.items()}
-
-durations_str = ["1h", "3h", "6h", "12h", "24h"]
-dur_hours = np.array([1, 3, 6, 12, 24])
-thresholds = {"1h": 300, "3h": 500, "6h": 600, "12h": 800, "24h": 1000}
-return_periods = [20, 50, 100, 200]
-
-obs_dict = {dur: load_and_deduplicate(obs_uploaded[dur]) for dur in durations_str}
-era_dict = {dur: load_and_deduplicate(era_uploaded[dur]) for dur in durations_str}
 
 def get_gev_depth(series, return_periods):
     data = series.dropna().values
@@ -229,7 +215,7 @@ for dur in durations_str:
             "Duration": dur,
             "Return_Period_yr": T,
             "Observed_mm": round(o_val, 2) if not np.isnan(o_val) else np.nan,
-            "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,  # Ensure hyphen matches here
+            "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,
             "PBIAS_pct": round(pb, 2) if not np.isnan(pb) else np.nan
         })
 
@@ -257,7 +243,7 @@ with tab2:
         st.dataframe(df_obs_matrix, use_container_width=True)
     with col_era:
         st.markdown("**ERA5-Land Raw Return Levels (mm)**")
-        df_era_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm")  # Updated to match hyphen
+        df_era_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm")
         st.dataframe(df_era_matrix, use_container_width=True)
 
 # =========================================================
@@ -266,11 +252,9 @@ with tab2:
 st.markdown("---")
 st.subheader("📝 Automated Engineering Feasibility Conclusion (Station Specific)")
 
-# Extract specific duration biases to synthesize conclusion
 pbias_1h = df_results[df_results["Duration"] == "1h"]["PBIAS_pct"].mean()
 pbias_24h = df_results[df_results["Duration"] == "24h"]["PBIAS_pct"].mean()
 
-# Build analytical interpretation text
 analysis_text = f"""
 For station **{selected_stn}**, the comparison between ground station observations and ERA5-Land reanalysis design return levels highlights distinct duration-dependent behaviors:
 
