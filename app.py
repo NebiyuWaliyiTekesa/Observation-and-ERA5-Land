@@ -12,13 +12,13 @@ st.title("🌧️ Can ERA5-Land data be used for Engineering purpose (Design Ret
 
 # Methodology Note
 st.info(
-    "**Methodology & Study Overview:**\n\n"
-    "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design, stormwater management, "
-    "and flood risk assessment, we derived Duration-Depth-Frequency (DDF) curves for each station for both observed "
-    "and ERA5-Land AMPs. The AMPs (observed and ERA5-Land) were fitted using a stationary Generalized Extreme Value (GEV) "
+    "**Methodology:**\n\n"
+    "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design and other engineering "
+    "applications, we derived Duration-Depth-Frequency (DDF) curves for each station for both observed "
+    "and ERA5-Land AMPs (1951-2023). The AMPs (observed and ERA5-Land) were fitted using the Generalized Extreme Value (GEV) "
     "distribution, and the DDF curves were computed for 1-, 3-, 6-, 12-, and 24-hr durations and return periods ($T$) "
-    "of 20, 50, 100, and 200 years (Soto-Escobar et al., 2026). We then quantified relative performance across elevation "
-    "classes, storm durations, and $T$ using Percentage Bias (PBIAS)."
+    "of 20, 50, 100, and 200 years (Soto-Escobar et al., 2026). We then quantified relative bias across storm duration "
+    "and $T$."
 )
 
 # =========================================================
