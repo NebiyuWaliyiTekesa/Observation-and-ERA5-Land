@@ -24,7 +24,7 @@ st.info(
     "**Methodology & Context:**\n\n"
     "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design and engineering applications, "
     "this dashboard evaluates Annual Maximum Precipitation (AMP) probability density functions (KDEs) and statistical summaries "
-    "stratified across three elevation classes (`Low < 230 m`, `Mid 230–720 m`, `High > 720 m`) for storm durations ranging from 1h to 24h "
+    "stratified across elevation classes or individual stations for storm durations ranging from 1h to 24h "
     "(Soto-Escobar et al., 2026). Crucially, this research demonstrates that relying on generalized regional summaries "
     "is scientifically insufficient for critical engineering design; rigorous, station-based, site-specific analysis is essential."
 )
@@ -89,7 +89,6 @@ def load_gis_and_metadata():
 
         df_meta['elev_mapped'] = df_meta[elev_col].apply(map_elevation_class)
 
-        # Load Boundary Shapefile if available
         shapefile_path = None
         for root, dirs, files in os.walk("."):
             for file in files:
@@ -113,7 +112,6 @@ if df_meta is None:
 
 elev_map = dict(zip(df_meta[code_col], df_meta['elev_mapped']))
 
-# Load observation and ERA5 datasets
 @st.cache_data
 def load_precipitation_data():
     obs_dicts = {}
@@ -158,7 +156,6 @@ if selected_station != "All Stations":
     </div>
     """, unsafe_allow_html=True)
 
-# Render Study Area Map in Sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("🗺️ Study Area Map")
 
@@ -166,12 +163,10 @@ fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=300)
 if gdf_boundary is not None:
     gdf_boundary.plot(ax=ax_map, color='#f7f7f7', edgecolor='#bdbdbd', linewidth=0.8)
 
-# Plot all station background points
 ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color='#9ecae1', s=12, edgecolor='none', alpha=0.7, label='Stations')
 
-# Highlight selected station or region
 if selected_station != "All Stations":
-    sel_row = df_meta[df_meta[code_col] == selected_station].iloc0 if hasattr(df_meta[df_meta[code_col] == selected_station], 'iloc0') else df_meta[df_meta[code_col] == selected_station].iloc[0]
+    sel_row = df_meta[df_meta[code_col] == selected_station].iloc[0]
     ax_map.scatter([sel_row[lon_col]], [sel_row[lat_col]], color='#d95f02', s=45, marker='*', edgecolor='black', linewidth=0.5, label='Selected Station')
     ax_map.set_title(f"Station: {selected_station}", fontsize=9, fontweight='bold')
 elif selected_region != "All" and region_col:
@@ -206,33 +201,53 @@ def process_filtered_data(sel_region, sel_station):
         common_stations = [c for c in df_obs.columns if c in df_era.columns and c in elev_map and c in target_stations]
         thr = custom_x_limits[duration]
         
-        obs_groups = {grp: [] for grp in hue_order}
-        era_groups = {grp: [] for grp in hue_order}
-        
-        for st_code in common_stations:
-            cat = elev_map[st_code]
-            if pd.isna(cat):
-                continue
+        if sel_station != "All Stations":
+            # For a single station, group by its specific elevation category
+            st_cat = elev_map.get(sel_station, 'Low (< 230 m)')
+            obs_groups = {grp: [] for grp in hue_order}
+            era_groups = {grp: [] for grp in hue_order}
             
-            o_s = df_obs[st_code].dropna()
-            e_s = df_era[st_code].dropna()
+            if common_stations:
+                st_code = common_stations[0]
+                o_s = df_obs[st_code].dropna()
+                e_s = df_era[st_code].dropna()
+                idx = o_s.index.intersection(e_s.index)
+                o_s, e_s = o_s.loc[idx], e_s.loc[idx]
+                valid_mask = (o_s <= thr) & (e_s <= thr)
+                o_s, e_s = o_s[valid_mask], e_s[valid_mask]
+                
+                if len(o_s) > 0 and pd.notna(st_cat):
+                    obs_groups[st_cat].extend(o_s.values)
+                    era_groups[st_cat].extend(e_s.values)
+        else:
+            obs_groups = {grp: [] for grp in hue_order}
+            era_groups = {grp: [] for grp in hue_order}
             
-            idx = o_s.index.intersection(e_s.index)
-            o_s, e_s = o_s.loc[idx], e_s.loc[idx]
-            
-            valid_mask = (o_s <= thr) & (e_s <= thr)
-            o_s, e_s = o_s[valid_mask], e_s[valid_mask]
-            
-            if len(o_s) > 0:
-                obs_groups[cat].extend(o_s.values)
-                era_groups[cat].extend(e_s.values)
+            for st_code in common_stations:
+                cat = elev_map[st_code]
+                if pd.isna(cat):
+                    continue
+                
+                o_s = df_obs[st_code].dropna()
+                e_s = df_era[st_code].dropna()
+                
+                idx = o_s.index.intersection(e_s.index)
+                o_s, e_s = o_s.loc[idx], e_s.loc[idx]
+                
+                valid_mask = (o_s <= thr) & (e_s <= thr)
+                o_s, e_s = o_s[valid_mask], e_s[valid_mask]
+                
+                if len(o_s) > 0:
+                    obs_groups[cat].extend(o_s.values)
+                    era_groups[cat].extend(e_s.values)
 
         pooled_data[duration] = {
             'OBS': {grp: np.array(vals) for grp, vals in obs_groups.items()},
             'ERA5-Land': {grp: np.array(vals) for grp, vals in era_groups.items()}
         }
 
-        for grp in hue_order:
+        active_groups = [elev_map[sel_station]] if sel_station != "All Stations" and sel_station in elev_map else hue_order
+        for grp in active_groups:
             for source, data_dict in [('OBS', obs_groups), ('ERA5-Land', era_groups)]:
                 arr = np.array(data_dict[grp])
                 if len(arr) > 0:
@@ -257,7 +272,7 @@ pooled_data, df_summary = process_filtered_data(selected_region, selected_statio
 # 4. DISPLAY SUMMARY TABLE & DOWNLOAD OPTION
 # =========================================================
 filter_title_suffix = f"(Region: {selected_region}, Station: {selected_station})" if selected_station != "All Stations" else (f"(Region: {selected_region})" if selected_region != "All" else "(All Regions & Stations)")
-st.subheader(f"📋 Elevation-Stratified Summary Statistics {filter_title_suffix}")
+st.subheader(f"📋 Summary Statistics {filter_title_suffix}")
 
 if df_summary.empty:
     st.warning("No data available for the selected region/station filter configuration.")
@@ -278,10 +293,13 @@ st.markdown("---")
 # =========================================================
 # 5. PLOTTING 2x3 KDE GRID
 # =========================================================
-st.subheader("📈 Probability Density Functions (KDE) Across Durations & Elevations")
+plot_title_suffix = f"for Station {selected_station}" if selected_station != "All Stations" else (f"for Region {selected_region}" if selected_region != "All" else "Across All Elevations & Durations")
+st.subheader(f"📈 Probability Density Functions (KDE) {plot_title_suffix}")
 
 fig, axes = plt.subplots(2, 3, figsize=(15, 7.5), dpi=600)
 plt.subplots_adjust(wspace=0.15, hspace=0.15, right=0.96, left=0.06, top=0.95, bottom=0.08)
+
+active_plot_groups = [elev_map[selected_station]] if selected_station != "All Stations" and selected_station in elev_map else hue_order
 
 for i in range(6):
     row, col = divmod(i, 3)
@@ -294,7 +312,7 @@ for i in range(6):
 
         dur = durations[i]
         
-        for grp in hue_order:
+        for grp in active_plot_groups:
             obs_arr = pooled_data[dur]['OBS'][grp]
             era_arr = pooled_data[dur]['ERA5-Land'][grp]
             
@@ -329,13 +347,21 @@ for i in range(6):
 
     else:
         ax.set_axis_off()
-        legend_elements = [
-            Line2D([0], [0], color='black', lw=2, linestyle='-', label='OBS'),
-            Line2D([0], [0], color='black', lw=2, linestyle='--', label='ERA5-Land'),
-            Line2D([0], [0], color=palette['Low (< 230 m)'], lw=2, label='Low Elevation (< 230 m)'),
-            Line2D([0], [0], color=palette['Mid (230–720 m)'], lw=2, label='Mid Elevation (230–720 m)'),
-            Line2D([0], [0], color=palette['High (> 720 m)'], lw=2, label='High Elevation (> 720 m)')
-        ]
+        if selected_station != "All Stations" and selected_station in elev_map:
+            st_cat = elev_map[selected_station]
+            legend_elements = [
+                Line2D([0], [0], color='black', lw=2, linestyle='-', label=f'OBS ({selected_station})'),
+                Line2D([0], [0], color='black', lw=2, linestyle='--', label=f'ERA5-Land ({selected_station})'),
+                Line2D([0], [0], color=palette[st_cat], lw=2, label=f'Class: {st_cat}')
+            ]
+        else:
+            legend_elements = [
+                Line2D([0], [0], color='black', lw=2, linestyle='-', label='OBS'),
+                Line2D([0], [0], color='black', lw=2, linestyle='--', label='ERA5-Land'),
+                Line2D([0], [0], color=palette['Low (< 230 m)'], lw=2, label='Low Elevation (< 230 m)'),
+                Line2D([0], [0], color=palette['Mid (230–720 m)'], lw=2, label='Mid Elevation (230–720 m)'),
+                Line2D([0], [0], color=palette['High (> 720 m)'], lw=2, label='High Elevation (> 720 m)')
+            ]
         ax.legend(handles=legend_elements, loc='center', fontsize=9.5, frameon=False, edgecolor='black')
 
 st.pyplot(fig)
@@ -347,7 +373,7 @@ st.markdown("---")
 st.subheader("📌 Engineering Analysis & Conclusions")
 
 st.markdown("""
-* **Topographic Control on Convective Extremes:** Stratifying AMP series by elevation reveals distinct distributional shifts across low-land, mid-elevation, and alpine zones, highlighting how complex terrain modulates sub-daily convective storm intensity.
+* **Topographic Control on Convective Extremes:** Stratifying AMP series by elevation or analyzing individual stations reveals distinct distributional shifts, highlighting how complex terrain modulates sub-daily convective storm intensity.
 * **Reanalysis Performance & Bias:** ERA5-Land exhibits varying degrees of fidelity relative to station gauges depending on elevation band and storm duration, particularly underestimating extreme percentiles ($P_{99}$) in complex high-elevation terrain due to grid-cell smoothing effects.
 * **Implications for Infrastructure Design:** Because generalized regional summaries fail to capture local microclimatic extremes, rigorous station-based validation is non-negotiable for reliable urban drainage and flood mitigation planning (Soto-Escobar et al., 2026).
 """)
