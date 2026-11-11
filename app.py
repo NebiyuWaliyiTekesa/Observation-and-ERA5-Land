@@ -38,19 +38,15 @@ try:
     
     for dur in durations_str:
         obs_file = f"OBS_ARF_corrected_{dur}.xlsx"
-        
-        # Strip 'h' from dur (e.g., '1h' -> '1') and add 'hr.xlsx'
         num_str = dur.replace('h', '')
         era_file = f"{num_str}hr.xlsx"
         
-        # Load and deduplicate observation file
         df_obs = pd.read_excel(obs_file)
         anno_col_obs = [c for c in df_obs.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_obs.columns] else df_obs.columns[0]
         df_obs = df_obs.set_index(anno_col_obs)
         df_obs.columns = df_obs.columns.astype(str).str.strip()
         obs_dict[dur] = df_obs.loc[:, ~df_obs.columns.duplicated(keep="first")]
         
-        # Load and deduplicate ERA5 file
         df_era = pd.read_excel(era_file)
         anno_col_era = [c for c in df_era.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_era.columns] else df_era.columns[0]
         df_era = df_era.set_index(anno_col_era)
@@ -169,68 +165,64 @@ def precompute_station_curves(station_list):
 station_cache = precompute_station_curves(common_stations)
 
 # =========================================================
-# 3. INTERACTIVE DASHBOARD VIEW (REGION -> STATION SELECTOR)
+# 3. INTERACTIVE SIDEBAR & FILTERS
 # =========================================================
-col1, col2 = st.columns([1, 3])
+st.subheader("Filter & Select")
 
-with col1:
-    st.subheader("Filter & Select")
-    
-    available_regions = ['All'] + sorted(list(set(station_cache[s]['region'] for s in common_stations)))
-    selected_region = st.selectbox("1. Select Region:", available_regions)
-    
-    if selected_region == 'All':
-        filtered_stations = common_stations
-    else:
-        filtered_stations = [s for s in common_stations if station_cache[s]['region'] == selected_region]
-    
-    if not filtered_stations:
-        st.warning("No stations found in this region.")
-        st.stop()
-        
-    selected_stn = st.selectbox("2. Select Station:", filtered_stations)
-    
+available_regions = ['All'] + sorted(list(set(station_cache[s]['region'] for s in common_stations)))
+selected_region = st.selectbox("1. Select Region:", available_regions)
+
+if selected_region == 'All':
+    filtered_stations = common_stations
+else:
+    filtered_stations = [s for s in common_stations if station_cache[s]['region'] == selected_region]
+
+selected_stn = st.selectbox("2. Select Station:", ["All Stations"] + filtered_stations)
+
+if selected_stn != "All Stations":
     st.info(
         f"**Selected Station:** `{selected_stn}`\n\n"
         f"**Region:** {station_cache[selected_stn]['region']}\n\n"
         f"**Elevation:** {station_cache[selected_stn]['elev']} m"
     )
+else:
+    st.info(f"**Region Filter:** {selected_region} ({len(filtered_stations)} stations active)")
 
-    # Study Area Map Widget in Sidebar (Matching Elevation KDE Style)
-    st.markdown("---")
-    st.subheader("🗺️ Study Area Map")
-    if north_shp is not None and lat_col and lon_col:
-        fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
-        north_shp.plot(ax=ax_map, color="#f7f7f7", edgecolor="#bdbdbd", linewidth=0.8)
-        
-        # Plot all stations background points
-        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#9ecae1", s=12, edgecolor='none', alpha=0.7, label="Stations")
-        
-        # Highlight selected station or region
-        if selected_stn != "All Stations" and selected_stn in station_cache:
-            sel_lat = float(station_cache[selected_stn]['lat'])
-            sel_lon = float(station_cache[selected_stn]['lon'])
-            ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=45, marker="*", edgecolor='black', linewidth=0.5, zorder=5, label="Selected Station")
-            ax_map.set_title(f"Location Map: {selected_stn}", fontsize=9, fontweight='bold')
-        elif selected_region != "All" and region_col:
-            reg_df = df_meta[df_meta[region_col] == selected_region]
-            ax_map.scatter(reg_df[lon_col], reg_df[lat_col], color="#2b83ba", s=20, edgecolor='black', linewidth=0.3, label=selected_region)
-            ax_map.set_title(f"Region: {selected_region}", fontsize=9, fontweight='bold')
-        else:
-            ax_map.set_title("Northern Italy Stations", fontsize=9, fontweight='bold')
-        
-        ax_map.axis('off')
-        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2, frameon=False)
-        st.pyplot(fig_map)
+# Study Area Map Widget
+st.markdown("---")
+st.subheader("🗺️ Study Area Map")
+if north_shp is not None and lat_col and lon_col:
+    fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
+    north_shp.plot(ax=ax_map, color="#f7f7f7", edgecolor="#bdbdbd", linewidth=0.8)
+    
+    ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#9ecae1", s=12, edgecolor='none', alpha=0.7, label="Stations")
+    
+    if selected_stn != "All Stations" and selected_stn in station_cache:
+        sel_lat = float(station_cache[selected_stn]['lat'])
+        sel_lon = float(station_cache[selected_stn]['lon'])
+        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=45, marker="*", edgecolor='black', linewidth=0.5, zorder=5, label="Selected Station")
+        ax_map.set_title(f"Location Map: {selected_stn}", fontsize=9, fontweight='bold')
+    elif selected_region != "All" and region_col:
+        reg_df = df_meta[df_meta[region_col] == selected_region]
+        ax_map.scatter(reg_df[lon_col], reg_df[lat_col], color="#2b83ba", s=20, edgecolor='black', linewidth=0.3, label=selected_region)
+        ax_map.set_title(f"Region: {selected_region}", fontsize=9, fontweight='bold')
     else:
-        st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
+        ax_map.set_title("Northern Italy Stations", fontsize=9, fontweight='bold')
+    
+    ax_map.axis('off')
+    ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2, frameon=False)
+    st.pyplot(fig_map)
+else:
+    st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
 
-with col2:
+# =========================================================
+# 4. MAIN CONTENT AREA (DDF CURVES & TABLES)
+# =========================================================
+if selected_stn != "All Stations":
     st.subheader(f"DDF Curves for Station: {selected_stn}")
-    
     stn_data = station_cache[selected_stn]
-    colors = ["#2b83ba", "#d95f02", "#7570b3", "#e7298a"]
     
+    colors = ["#2b83ba", "#d95f02", "#7570b3", "#e7298a"]
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=600)
     
     for idx_T, T in enumerate(return_periods):
@@ -253,89 +245,109 @@ with col2:
     
     ax.set_title(
         f"Station: {selected_stn} | Region: {stn_data['region']} | Elev: {stn_data['elev']} m | Lat: {stn_data['lat']}° | Lon: {stn_data['lon']}°",
-        fontsize=10,
-        fontweight='bold'
+        fontsize=10, fontweight='bold'
     )
     ax.set_xlabel("Duration", fontsize=9, fontweight='bold')
     ax.set_ylabel("Return Level (mm)", fontsize=9, fontweight='bold')
     ax.legend(frameon=True, fontsize=7, loc="upper left", ncol=2)
+    st.pyplot(fig)
+
+    # Tables & PBIAS for Single Station
+    st.markdown("---")
+    st.subheader(f"📊 Raw Return Levels & Bias Analysis for Station: {selected_stn}")
+
+    table_data = []
+    for dur in durations_str:
+        for idx_T, T in enumerate(return_periods):
+            o_val = stn_data["obs"][dur][idx_T]
+            e_val = stn_data["era"][dur][idx_T]
+            pb = 100.0 * (e_val - o_val) / o_val if (not np.isnan(o_val) and not np.isnan(e_val) and o_val != 0) else np.nan
+            
+            table_data.append({
+                "Duration": dur,
+                "Return_Period_yr": T,
+                "Observed_mm": round(o_val, 2) if not np.isnan(o_val) else np.nan,
+                "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,
+                "PBIAS_pct": round(pb, 2) if not np.isnan(pb) else np.nan
+            })
+
+    df_results = pd.DataFrame(table_data)
+    tab1, tab2 = st.tabs(["📋 Detailed Table & PBIAS", "📐 Traditional DDF Matrix View"])
+
+    with tab1:
+        st.dataframe(df_results, use_container_width=True)
+        csv_data = df_results.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download Raw Return Levels for Station {selected_stn} (CSV)",
+            data=csv_data,
+            file_name=f"station_{selected_stn}_return_levels.csv",
+            mime="text/csv",
+        )
+
+    with tab2:
+        col_obs, col_era = st.columns(2)
+        with col_obs:
+            st.markdown("**Observed Raw Return Levels (mm)**")
+            st.dataframe(df_results.pivot(index="Duration", columns="Return_Period_yr", values="Observed_mm"), use_container_width=True)
+        with col_era:
+            st.markdown("**ERA5-Land Raw Return Levels (mm)**")
+            st.dataframe(df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm"), use_container_width=True)
+
+else:
+    st.subheader(f"📈 Aggregated DDF Curves (Selection: Region = {selected_region}, All Stations)")
     
+    # Compute mean curves across filtered stations
+    mean_obs_curves = {dur: np.zeros(len(return_periods)) for dur in durations_str}
+    mean_era_curves = {dur: np.zeros(len(return_periods)) for dur in durations_str}
+    counts = {dur: np.zeros(len(return_periods)) for dur in durations_str}
+
+    for stn in filtered_stations:
+        stn_data = station_cache[stn]
+        for dur in durations_str:
+            for idx_T, T in enumerate(return_periods):
+                o_val = stn_data["obs"][dur][idx_T]
+                e_val = stn_data["era"][dur][idx_T]
+                if not np.isnan(o_val):
+                    mean_obs_curves[dur][idx_T] += o_val
+                if not np.isnan(e_val):
+                    mean_era_curves[dur][idx_T] += e_val
+                if not np.isnan(o_val) and not np.isnan(e_val):
+                    counts[dur][idx_T] += 1
+
+    for dur in durations_str:
+        for idx_T in range(len(return_periods)):
+            if counts[dur][idx_T] > 0:
+                mean_obs_curves[dur][idx_T] /= counts[dur][idx_T]
+                mean_era_curves[dur][idx_T] /= counts[dur][idx_T]
+
+    colors = ["#2b83ba", "#d95f02", "#7570b3", "#e7298a"]
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=600)
+    
+    for idx_T, T in enumerate(return_periods):
+        obs_y = [mean_obs_curves[dur][idx_T] for dur in durations_str]
+        era_y = [mean_era_curves[dur][idx_T] for dur in durations_str]
+        
+        ax.plot(dur_hours, obs_y, marker="o", linestyle="-", color=colors[idx_T],
+                linewidth=1.5, markersize=5, label=f"Mean Obs ({T} yr)")
+        ax.plot(dur_hours, era_y, marker="s", linestyle="--", color=colors[idx_T],
+                linewidth=1.5, markersize=5, markerfacecolor="white", label=f"Mean ERA5 ({T} yr)")
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xticks(dur_hours)
+    ax.set_xticklabels([f"{h}h" for h in dur_hours], fontsize=9)
+    ax.set_xlim(0.6, 30)
+    ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
+    ax.grid(True, which="both", ls="--", alpha=0.3)
+    
+    ax.set_title(f"Aggregated DDF Curves — Region: {selected_region} ({len(filtered_stations)} Stations)", fontsize=10, fontweight='bold')
+    ax.set_xlabel("Duration", fontsize=9, fontweight='bold')
+    ax.set_ylabel("Mean Return Level (mm)", fontsize=9, fontweight='bold')
+    ax.legend(frameon=True, fontsize=7, loc="upper left", ncol=2)
     st.pyplot(fig)
 
 # =========================================================
-# 4. RAW RETURN LEVELS & PBIAS TABLES + DOWNLOAD
-# =========================================================
-st.markdown("---")
-st.subheader(f"📊 Raw Return Levels & Bias Analysis for Station: {selected_stn}")
-
-table_data = []
-for dur in durations_str:
-    for idx_T, T in enumerate(return_periods):
-        o_val = stn_data["obs"][dur][idx_T]
-        e_val = stn_data["era"][dur][idx_T]
-        pb = 100.0 * (e_val - o_val) / o_val if (not np.isnan(o_val) and not np.isnan(e_val) and o_val != 0) else np.nan
-        
-        table_data.append({
-            "Duration": dur,
-            "Return_Period_yr": T,
-            "Observed_mm": round(o_val, 2) if not np.isnan(o_val) else np.nan,
-            "ERA5-Land_mm": round(e_val, 2) if not np.isnan(e_val) else np.nan,
-            "PBIAS_pct": round(pb, 2) if not np.isnan(pb) else np.nan
-        })
-
-df_results = pd.DataFrame(table_data)
-
-tab1, tab2 = st.tabs(["📋 Detailed Table & PBIAS", "📐 Traditional DDF Matrix View"])
-
-with tab1:
-    st.write("Complete breakdown of raw values and error metrics per duration and return period:")
-    st.dataframe(df_results, use_container_width=True)
-    
-    csv_data = df_results.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label=f"📥 Download Raw Return Levels for Station {selected_stn} (CSV)",
-        data=csv_data,
-        file_name=f"station_{selected_stn}_return_levels.csv",
-        mime="text/csv",
-    )
-
-with tab2:
-    col_obs, col_era = st.columns(2)
-    with col_obs:
-        st.markdown("**Observed Raw Return Levels (mm)**")
-        df_obs_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="Observed_mm")
-        st.dataframe(df_obs_matrix, use_container_width=True)
-    with col_era:
-        st.markdown("**ERA5-Land Raw Return Levels (mm)**")
-        df_era_matrix = df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm")
-        st.dataframe(df_era_matrix, use_container_width=True)
-
-# =========================================================
-# 5. AUTOMATED ENGINEERING FEASIBILITY & ANALYSIS REPORT
-# =========================================================
-st.markdown("---")
-st.subheader("📝 Engineering Feasibility Conclusion (Station Specific)")
-
-pbias_1h = df_results[df_results["Duration"] == "1h"]["PBIAS_pct"].mean()
-pbias_24h = df_results[df_results["Duration"] == "24h"]["PBIAS_pct"].mean()
-
-analysis_text = f"""
-For station **{selected_stn}**, the comparison between ground station observations and ERA5-Land reanalysis design return levels highlights distinct duration-dependent behaviors:
-
-- **Short-Duration Performance (1h – 3h):** ERA5-Land exhibits pronounced underestimation, with average biases dropping significantly (e.g., around **{pbias_1h:.1f}%** for 1-hour accumulation). This limitation is primarily driven by reanalysis grid-cell averaging and the coarse spatial/temporal representation of convective storms, making raw sub-daily extremes unsuitable for direct urban or small-catchment engineering design without rigorous bias correction.
-- **Long-Duration Performance (12h – 24h):** As accumulation periods increase, the representativeness of ERA5-Land improves substantially. At the 24-hour duration, the bias shifts closer to zero (averaging roughly **{pbias_24h:.1f}%**), demonstrating that reanalysis data captures synoptic-scale aggregate precipitation volumes much more reliably.
-"""
-
-if abs(pbias_24h) < 15.0:
-    feasibility_conclusion = f"✅ **Conclusion:** While **unsuitable for short-duration applications** due to severe underestimation, ERA5-Land shows good reliability for **daily (24-hr) cumulative engineering assessments** at this station (Bias ~ {pbias_24h:.1f}%). It can be cautiously used for macro-scale hydrological planning or after applying scaling factors."
-else:
-    feasibility_conclusion = f"❌ **Conclusion:** ERA5-Land exhibits noticeable discrepancies across durations at this station (24h bias is ~ {pbias_24h:.1f}%). Direct use for critical design return levels is **not recommended** without local calibration or quantile mapping."
-
-st.info(analysis_text)
-st.markdown(feasibility_conclusion)
-
-# =========================================================
-# 6. REGIONAL & DATASET-WIDE PERFORMANCE SUMMARY (1h vs 24h)
+# 5. REGIONAL & DATASET-WIDE PERFORMANCE SUMMARY
 # =========================================================
 st.markdown("---")
 st.subheader("📈 Regional Breakdown: Performance Summary (1h vs 24h)")
@@ -368,7 +380,6 @@ df_summary = pd.DataFrame(summary_rows)
 regional_stats = []
 for region_name, group in df_summary.groupby("Region"):
     n_stns = len(group)
-    
     passed_1h_count = group["Passed_1h"].sum()
     failed_1h_count = n_stns - passed_1h_count
     pass_pct_1h = (passed_1h_count / n_stns) * 100 if n_stns > 0 else 0
