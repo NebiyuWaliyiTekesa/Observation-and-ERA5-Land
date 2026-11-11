@@ -266,28 +266,6 @@ def process_filtered_data(sel_region, sel_station):
 pooled_data, df_summary = process_filtered_data(selected_region, selected_station)
 
 # =========================================================
-# 4. DISPLAY SUMMARY TABLE & DOWNLOAD OPTION
-# =========================================================
-filter_title_suffix = f"(Region: {selected_region}, Station: {selected_station})" if selected_station != "All Stations" else (f"(Region: {selected_region})" if selected_region != "All" else "(All Regions & Stations)")
-st.subheader(f"📋 Summary Statistics {filter_title_suffix}")
-
-if df_summary.empty:
-    st.warning("No data available for the selected region/station filter configuration.")
-else:
-    st.dataframe(df_summary, use_container_width=True)
-
-    csv_buffer = io.BytesIO()
-    df_summary.to_csv(csv_buffer, index=False)
-    st.download_button(
-        label="📥 Download Filtered Summary Statistics (CSV)",
-        data=csv_buffer.getvalue(),
-        file_name="PDF_Summary_Statistics_Filtered.csv",
-        mime="text/csv"
-    )
-
-st.markdown("---")
-
-# =========================================================
 # 5. PLOTTING 2x3 KDE GRID
 # =========================================================
 plot_title_suffix = f"for Station {selected_station}" if selected_station != "All Stations" else (f"for Region {selected_region}" if selected_region != "All" else "Across All Elevations & Durations")
@@ -364,4 +342,28 @@ for i in range(6):
 st.pyplot(fig)
 
 # =========================================================
+
+
+
+# =========================================================
+# 4. DISPLAY SUMMARY TABLE & DOWNLOAD OPTION
+# =========================================================
+filter_title_suffix = f"(Region: {selected_region}, Station: {selected_station})" if selected_station != "All Stations" else (f"(Region: {selected_region})" if selected_region != "All" else "(All Regions & Stations)")
+st.subheader(f"📋 Summary Statistics {filter_title_suffix}")
+
+if df_summary.empty:
+    st.warning("No data available for the selected region/station filter configuration.")
+else:
+    st.dataframe(df_summary, use_container_width=True)
+
+    csv_buffer = io.BytesIO()
+    df_summary.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="📥 Download Filtered Summary Statistics (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name="PDF_Summary_Statistics_Filtered.csv",
+        mime="text/csv"
+    )
+
+st.markdown("---")
 
