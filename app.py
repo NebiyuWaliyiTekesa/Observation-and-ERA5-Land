@@ -200,11 +200,11 @@ with col1:
     st.markdown("---")
     st.subheader("🗺️ Study Area Map")
     if north_shp is not None and lat_col and lon_col:
-        fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=300)
+        fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
         north_shp.plot(ax=ax_map, color="#f0f2f6", edgecolor="#cbd5e1", linewidth=0.8)
         
         # Plot all stations
-        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#94a3b8", s=12, alpha=0.6, label="All Stations")
+        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#94a3b8", s=10, alpha=0.6, label="Stations")
         
         # Highlight selected station
         sel_lat = float(station_cache[selected_stn]['lat'])
@@ -213,7 +213,7 @@ with col1:
         
         ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
         ax_map.axis('off')
-        ax_map.legend(fontsize=6, loc="lower right", frameon=True)
+        ax_map.legend(fontsize=4, loc="lower right", frameon=True)
         st.pyplot(fig_map)
     else:
         st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
