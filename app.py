@@ -209,11 +209,11 @@ with col1:
         # Highlight selected station
         sel_lat = float(station_cache[selected_stn]['lat'])
         sel_lon = float(station_cache[selected_stn]['lon'])
-        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=45, marker="*", zorder=5, label=f"Selected ({selected_stn})")
+        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=35, marker="*", zorder=5, label=f"Selected ({selected_stn})")
         
         ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
         ax_map.axis('off')
-        ax_map.legend(fontsize=4, loc="lower right", frameon=True)
+        ax_map.legend(fontsize=6, loc="lower right", frameon=True)
         st.pyplot(fig_map)
     else:
         st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
