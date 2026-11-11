@@ -9,7 +9,17 @@ import io
 st.set_page_config(page_title="Can ERA5-Land data be used for Engineering purpose (Design Return Level)?", layout="wide")
 
 st.title("🌧️ Can ERA5-Land data be used for Engineering purpose (Design Return Level)?")
-st.write("Automated comparison of Design Return Level derived from **Observed** data and **ERA5-Land** reanalysis.")
+
+# Methodology Note
+st.info(
+    "**Methodology & Study Overview:**\n\n"
+    "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design, stormwater management, "
+    "and flood risk assessment, we derived Duration-Depth-Frequency (DDF) curves for each station for both observed "
+    "and ERA5-Land AMPs. The AMPs (observed and ERA5-Land) were fitted using a stationary Generalized Extreme Value (GEV) "
+    "distribution, and the DDF curves were computed for 1-, 3-, 6-, 12-, and 24-hr durations and return periods ($T$) "
+    "of 20, 50, 100, and 200 years (Soto-Escobar et al., 2026). We then quantified relative performance across elevation "
+    "classes, storm durations, and $T$ using Percentage Bias (PBIAS)."
+)
 
 # =========================================================
 # 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
@@ -35,7 +45,7 @@ try:
     for dur in durations_str:
         obs_file = f"OBS_ARF_corrected_{dur}.xlsx"
         
-        # Strip the 'h' from dur (e.g., '1h' becomes '1') and add 'hr.xlsx'
+        # Strip 'h' from dur (e.g., '1h' -> '1') and add 'hr.xlsx'
         num_str = dur.replace('h', '')
         era_file = f"{num_str}hr.xlsx"
         
