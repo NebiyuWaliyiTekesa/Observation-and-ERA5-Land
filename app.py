@@ -290,3 +290,51 @@ else:
 
 st.info(analysis_text)
 st.markdown(feasibility_conclusion)
+# =========================================================
+# 6. DATASET-WIDE ACCEPTABLE PERFORMANCE SUMMARY (1h vs 24h)
+# =========================================================
+st.markdown("---")
+st.subheader("📈 Regional/Dataset-Wide Performance Summary (1h vs 24h)")
+
+summary_rows = []
+for stn in common_stations:
+    stn_curves = station_cache[stn]
+    
+    # Compute mean PBIAS for 1h across return periods
+    obs_1h = [stn_curves["obs"]["1h"][idx] for idx in range(len(return_periods))]
+    era_1h = [stn_curves["era"]["1h"][idx] for idx in range(len(return_periods))]
+    pbias_1h_vals = [100.0 * (e - o) / o for o, e in zip(obs_1h, era_1h) if not np.isnan(o) and not np.isnan(e) and o != 0]
+    mean_pb_1h = np.mean(pbias_1h_vals) if pbias_1h_vals else np.nan
+    
+    # Compute mean PBIAS for 24h across return periods
+    obs_24h = [stn_curves["obs"]["24h"][idx] for idx in range(len(return_periods))]
+    era_24h = [stn_curves["era"]["24h"][idx] for idx in range(len(return_periods))]
+    pbias_24h_vals = [100.0 * (e - o) / o for o, e in zip(obs_24h, era_24h) if not np.isnan(o) and not np.isnan(e) and o != 0]
+    mean_pb_24h = np.mean(pbias_24h_vals) if pbias_24h_vals else np.nan
+    
+    summary_rows.append({
+        "Station": stn,
+        "Region": stn_curves["region"],
+        "Mean_PBIAS_1h": mean_pb_1h,
+        "Mean_PBIAS_24h": mean_pb_24h,
+        "Accepted_1h": abs(mean_pb_1h) < 15.0 if not np.isnan(mean_pb_1h) else False,
+        "Accepted_24h": abs(mean_pb_24h) < 15.0 if not np.isnan(mean_pb_24h) else False
+    })
+
+df_summary = pd.DataFrame(summary_rows)
+
+total_valid_stns = len(df_summary)
+pct_1h = (df_summary["Accepted_1h"].sum() / total_valid_stns) * 100 if total_valid_stns > 0 else 0
+pct_24h = (df_summary["Accepted_24h"].sum() / total_valid_stns) * 100 if total_valid_stns > 0 else 0
+
+st.write(f"Evaluated across **{total_valid_stns} stations** (Acceptance threshold defined as $|\text{{PBIAS}}| < 15\%$):")
+
+col_sum1, col_sum2 = st.columns(2)
+with col_sum1:
+    st.metric(label="Accepted Stations (1-hr Duration)", value=f"{pct_1h:.1f}%", help="Percentage of stations showing acceptable bias for 1-hr design storms.")
+with col_sum2:
+    st.metric(label="Accepted Stations (24-hr Duration)", value=f"{pct_24h:.1f}%", help="Percentage of stations showing acceptable bias for 24-hr design storms.")
+
+st.markdown(
+    f"**Dataset Conclusion:** Only **{pct_1h:.1f}%** of stations demonstrate acceptable ERA5-Land representation at the 1-hour duration due to sub-daily convective underestimation. Conversely, performance improves significantly at longer durations, with **{pct_24h:.1f}%** of stations showing acceptable agreement for 24-hour design storm accumulations."
+)
