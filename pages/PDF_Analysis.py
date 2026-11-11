@@ -269,9 +269,9 @@ pooled_data, df_summary = process_filtered_data(selected_region, selected_statio
 # 5. PLOTTING 2x3 KDE GRID
 # =========================================================
 plot_title_suffix = f"for Station {selected_station}" if selected_station != "All Stations" else (f"for Region {selected_region}" if selected_region != "All" else "Across All Elevations & Durations")
-st.subheader(f"📈 Probability Density Functions (KDE) {plot_title_suffix}")
+st.subheader(f"📈 PDF {plot_title_suffix}")
 
-fig, axes = plt.subplots(2, 3, figsize=(15, 7.5), dpi=600)
+fig, axes = plt.subplots(2, 3, figsize=(15, 7.5), dpi=300)
 plt.subplots_adjust(wspace=0.15, hspace=0.15, right=0.96, left=0.06, top=0.95, bottom=0.08)
 
 active_plot_groups = [elev_map[selected_station]] if selected_station != "All Stations" and selected_station in elev_map else hue_order
