@@ -57,13 +57,15 @@ palette = {
 }
 
 # =========================================================
-# 1. AUTOMATED FILE LOADING & ELEVATION MAPPING
+# 1. AUTOMATED FILE LOADING & METADATA MAPPING
 # =========================================================
 try:
     df_meta = pd.read_excel("locations.xlsx")
     
     code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
     elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
+    region_col = [c for c in df_meta.columns if c.lower() in ['region', 'province', 'area', 'zone']][0] if any(c.lower() in ['region', 'province', 'area', 'zone'] for c in df_meta.columns) else None
+
     df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
 
     def map_elevation_class(val):
@@ -80,6 +82,11 @@ try:
 
     df_meta['elev_mapped'] = df_meta[elev_col].apply(map_elevation_class)
     elev_map = dict(zip(df_meta[code_col], df_meta['elev_mapped']))
+    
+    if region_col:
+        region_map = dict(zip(df_meta[code_col], df_meta[region_col]))
+    else:
+        region_map = {code: "All Regions" for code in df_meta[code_col]}
 
     obs_dicts = {}
     era_dicts = {}
@@ -100,10 +107,39 @@ except Exception as e:
     st.stop()
 
 # =========================================================
-# 2. DATA PROCESSING & SUMMARY STATISTICS COMPUTATION
+# 2. SIDEBAR FILTER & SELECTION CONTROLS
+# =========================================================
+st.sidebar.header("Filter & Select")
+
+# Region Selection
+all_regions = sorted(df_meta[region_col].dropna().unique().tolist()) if region_col else []
+selected_region = st.sidebar.selectbox("1. Select Region:", ["All"] + all_regions)
+
+# Filter stations based on region choice
+if selected_region != "All" and region_col:
+    filtered_stations_df = df_meta[df_meta[region_col] == selected_region]
+else:
+    filtered_stations_df = df_meta
+
+available_stations = sorted(filtered_stations_df[code_col].unique().tolist())
+selected_station = st.sidebar.selectbox("2. Select Station:", ["All Stations"] + available_stations)
+
+# Show Station Details Card if a specific station is picked
+if selected_station != "All Stations":
+    st_row = df_meta[df_meta[code_col] == selected_station].iloc[0]
+    st.sidebar.markdown(f"""
+    <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; color: #31333F;">
+        <b>Selected Station:</b> {selected_station}<br>
+        <b>Region:</b> {st_row[region_col] if region_col else 'N/A'}<br>
+        <b>Elevation:</b> {st_row[elev_col]} m ({st_row['elev_mapped']})
+    </div>
+    """, unsafe_allow_html=True)
+
+# =========================================================
+# 3. DATA PROCESSING & SUMMARY STATISTICS COMPUTATION
 # =========================================================
 @st.cache_data
-def process_pooled_data():
+def process_filtered_data(sel_region, sel_station):
     pooled_data = {}
     summary_rows = []
 
@@ -111,7 +147,15 @@ def process_pooled_data():
         df_obs = obs_dicts[duration]
         df_era = era_dicts[duration]
         
-        common_stations = [c for c in df_obs.columns if c in df_era.columns and c in elev_map]
+        # Determine valid stations based on sidebar filters
+        if sel_station != "All Stations":
+            target_stations = [sel_station]
+        elif sel_region != "All" and region_col:
+            target_stations = df_meta[df_meta[region_col] == sel_region][code_col].tolist()
+        else:
+            target_stations = df_meta[code_col].tolist()
+
+        common_stations = [c for c in df_obs.columns if c in df_era.columns and c in elev_map and c in target_stations]
         thr = custom_x_limits[duration]
         
         obs_groups = {grp: [] for grp in hue_order}
@@ -159,27 +203,32 @@ def process_pooled_data():
 
     return pooled_data, pd.DataFrame(summary_rows)
 
-pooled_data, df_summary = process_pooled_data()
+pooled_data, df_summary = process_filtered_data(selected_region, selected_station)
 
 # =========================================================
-# 3. DISPLAY SUMMARY TABLE & DOWNLOAD OPTION
+# 4. DISPLAY SUMMARY TABLE & DOWNLOAD OPTION
 # =========================================================
-st.subheader("📋 Elevation-Stratified Summary Statistics")
-st.dataframe(df_summary, use_container_width=True)
+filter_title_suffix = f"(Region: {selected_region}, Station: {selected_station})" if selected_station != "All Stations" else (f"(Region: {selected_region})" if selected_region != "All" else "(All Regions & Stations)")
+st.subheader(f"📋 Elevation-Stratified Summary Statistics {filter_title_suffix}")
 
-csv_buffer = io.BytesIO()
-df_summary.to_csv(csv_buffer, index=False)
-st.download_button(
-    label="📥 Download Summary Statistics (CSV)",
-    data=csv_buffer.getvalue(),
-    file_name="PDF_Summary_Statistics.csv",
-    mime="text/csv"
-)
+if df_summary.empty:
+    st.warning("No data available for the selected region/station filter configuration.")
+else:
+    st.dataframe(df_summary, use_container_width=True)
+
+    csv_buffer = io.BytesIO()
+    df_summary.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="📥 Download Filtered Summary Statistics (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name="PDF_Summary_Statistics_Filtered.csv",
+        mime="text/csv"
+    )
 
 st.markdown("---")
 
 # =========================================================
-# 4. PLOTTING 2x3 KDE GRID
+# 5. PLOTTING 2x3 KDE GRID
 # =========================================================
 st.subheader("📈 Probability Density Functions (KDE) Across Durations & Elevations")
 
@@ -201,13 +250,13 @@ for i in range(6):
             obs_arr = pooled_data[dur]['OBS'][grp]
             era_arr = pooled_data[dur]['ERA5-Land'][grp]
             
-            if len(obs_arr) > 0:
+            if len(obs_arr) > 1: # KDE requires at least 2 points
                 sns.kdeplot(
                     obs_arr, ax=ax, color=palette[grp], linestyle='-', 
                     linewidth=1.6, label=f'{grp} OBS', cut=0
                 )
             
-            if len(era_arr) > 0:
+            if len(era_arr) > 1:
                 sns.kdeplot(
                     era_arr, ax=ax, color=palette[grp], linestyle='--', 
                     linewidth=1.6, label=f'{grp} ERA5-Land', cut=0
