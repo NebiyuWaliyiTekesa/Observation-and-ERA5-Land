@@ -8,7 +8,7 @@ import io
 
 st.set_page_config(page_title="Can ERA5-Land data used for Engeneering porpuse (Design Return Level) ?", layout="wide")
 
-st.title("🌧️ Can ERA5-Land Renalaysis data used for Engeneering porpuse (Design Return Level) ?")
+st.title("🌧️ Can ERA5-Land data used for Engeneering porpuse (Design Return Level)?")
 st.write("Automated comparison of Design Return Level derived from **Observed** data and **ERA5-Land** reanalysis.")
 
 # =========================================================
