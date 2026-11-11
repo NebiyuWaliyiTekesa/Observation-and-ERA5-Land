@@ -178,7 +178,7 @@ with col1:
     
     st.info(
         f"**Selected Station:** `{selected_stn}`\n\n"
-        f"**Region/Regime:** {station_cache[selected_stn]['region']}\n\n"
+        f"**Region:** {station_cache[selected_stn]['region']}\n\n"
         f"**Elevation:** {station_cache[selected_stn]['elev']} m"
     )
 
