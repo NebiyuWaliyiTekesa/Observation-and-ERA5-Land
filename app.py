@@ -61,9 +61,9 @@ except Exception as e:
     st.error(f"Error loading files automatically from repository: {e}")
     st.stop()
 
-# Load Shapefile for Study Area Map (Make sure your shapefile is in the repo, e.g., 'italy_regions.shp')
+# Load Shapefile for Study Area Map
 try:
-    shp_file = "italy_regions.shp"  # Update filename if your shapefile has a different name in GitHub
+    shp_file = "italy_regions.shp"  
     italy = gpd.read_file(shp_file).to_crs("EPSG:4326")
     regions_list = [
         "Piedmont", "Valle d'Aosta", "Liguria", "Lombardy", 
@@ -196,24 +196,31 @@ with col1:
         f"**Elevation:** {station_cache[selected_stn]['elev']} m"
     )
 
-    # Study Area Map Widget in Sidebar
+    # Study Area Map Widget in Sidebar (Matching Elevation KDE Style)
     st.markdown("---")
     st.subheader("🗺️ Study Area Map")
     if north_shp is not None and lat_col and lon_col:
         fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
-        north_shp.plot(ax=ax_map, color="#f0f2f6", edgecolor="#cbd5e1", linewidth=0.8)
+        north_shp.plot(ax=ax_map, color="#f7f7f7", edgecolor="#bdbdbd", linewidth=0.8)
         
-        # Plot all stations
-        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#94a3b8", s=10, alpha=0.6, label="Stations")
+        # Plot all stations background points
+        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#9ecae1", s=12, edgecolor='none', alpha=0.7, label="Stations")
         
-        # Highlight selected station
-        sel_lat = float(station_cache[selected_stn]['lat'])
-        sel_lon = float(station_cache[selected_stn]['lon'])
-        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=35, marker="*", zorder=5, label=f"Selected ({selected_stn})")
+        # Highlight selected station or region
+        if selected_stn != "All Stations" and selected_stn in station_cache:
+            sel_lat = float(station_cache[selected_stn]['lat'])
+            sel_lon = float(station_cache[selected_stn]['lon'])
+            ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=45, marker="*", edgecolor='black', linewidth=0.5, zorder=5, label="Selected Station")
+            ax_map.set_title(f"Location Map: {selected_stn}", fontsize=9, fontweight='bold')
+        elif selected_region != "All" and region_col:
+            reg_df = df_meta[df_meta[region_col] == selected_region]
+            ax_map.scatter(reg_df[lon_col], reg_df[lat_col], color="#2b83ba", s=20, edgecolor='black', linewidth=0.3, label=selected_region)
+            ax_map.set_title(f"Region: {selected_region}", fontsize=9, fontweight='bold')
+        else:
+            ax_map.set_title("Northern Italy Stations", fontsize=9, fontweight='bold')
         
-        ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
         ax_map.axis('off')
-        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=2, frameon=False)
+        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2, frameon=False)
         st.pyplot(fig_map)
     else:
         st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
@@ -337,13 +344,11 @@ summary_rows = []
 for stn in common_stations:
     stn_curves = station_cache[stn]
     
-    # Compute mean PBIAS for 1h across return periods
     obs_1h = [stn_curves["obs"]["1h"][idx] for idx in range(len(return_periods))]
     era_1h = [stn_curves["era"]["1h"][idx] for idx in range(len(return_periods))]
     pbias_1h_vals = [100.0 * (e - o) / o for o, e in zip(obs_1h, era_1h) if not np.isnan(o) and not np.isnan(e) and o != 0]
     mean_pb_1h = np.mean(pbias_1h_vals) if pbias_1h_vals else np.nan
     
-    # Compute mean PBIAS for 24h across return periods
     obs_24h = [stn_curves["obs"]["24h"][idx] for idx in range(len(return_periods))]
     era_24h = [stn_curves["era"]["24h"][idx] for idx in range(len(return_periods))]
     pbias_24h_vals = [100.0 * (e - o) / o for o, e in zip(obs_24h, era_24h) if not np.isnan(o) and not np.isnan(e) and o != 0]
@@ -360,7 +365,6 @@ for stn in common_stations:
 
 df_summary = pd.DataFrame(summary_rows)
 
-# Group by Region to generate regional statistics
 regional_stats = []
 for region_name, group in df_summary.groupby("Region"):
     n_stns = len(group)
@@ -389,7 +393,6 @@ df_regional_table = pd.DataFrame(regional_stats)
 st.write("Regional performance breakdown (Acceptance criteria: $|\text{PBIAS}| \le 20\%$):")
 st.dataframe(df_regional_table, use_container_width=True)
 
-# Overall dataset totals
 total_stns = len(df_summary)
 tot_p1h = df_summary["Passed_1h"].sum()
 tot_f1h = total_stns - tot_p1h
