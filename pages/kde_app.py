@@ -1,6 +1,8 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
+import geopandas as gpd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import skew, kurtosis
@@ -16,14 +18,15 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 ERA5-Land vs. Observed AMP Elevation-Stratified KDE Analysis")
+st.title("📊 Elevation-Stratified AMP KDE & Statistical Analysis")
 
 st.info(
-    "**Methodology & Scope:**\n\n"
-    "This dashboard evaluates Annual Maximum Precipitation (AMP) distributions stratified across three elevation classes "
-    "(`Low < 230 m`, `Mid 230–720 m`, `High > 720 m`) for storm durations ranging from 1 hour to 24 hours. "
-    "Probability Density Functions (KDEs) and statistical summaries are computed using quality-controlled station observations "
-    "and ERA5-Land reanalysis datasets."
+    "**Methodology & Context:**\n\n"
+    "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design and engineering applications, "
+    "this dashboard evaluates Annual Maximum Precipitation (AMP) probability density functions (KDEs) and statistical summaries "
+    "stratified across three elevation classes (`Low < 230 m`, `Mid 230–720 m`, `High > 720 m`) for storm durations ranging from 1h to 24h "
+    "(Soto-Escobar et al., 2026). Crucially, this research demonstrates that relying on generalized regional summaries "
+    "is scientifically insufficient for critical engineering design; rigorous, station-based, site-specific analysis is essential."
 )
 
 plt.rcParams.update({
@@ -57,40 +60,64 @@ palette = {
 }
 
 # =========================================================
-# 1. AUTOMATED FILE LOADING & METADATA MAPPING
+# 1. LOAD METADATA, GIS SHAPEFILES, & ARF DATA
 # =========================================================
-try:
-    df_meta = pd.read_excel("locations.xlsx")
-    
-    code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
-    elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
-    region_col = [c for c in df_meta.columns if c.lower() in ['region', 'province', 'area', 'zone']][0] if any(c.lower() in ['region', 'province', 'area', 'zone'] for c in df_meta.columns) else None
+@st.cache_resource
+def load_gis_and_metadata():
+    try:
+        df_meta = pd.read_excel("locations.xlsx")
+        
+        code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
+        elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
+        lat_col = [c for c in df_meta.columns if c.lower() in ['lat', 'latitude', 'y']][0]
+        lon_col = [c for c in df_meta.columns if c.lower() in ['lon', 'longitude', 'long', 'x']][0]
+        region_col = [c for c in df_meta.columns if c.lower() in ['region', 'province', 'area', 'zone']][0] if any(c.lower() in ['region', 'province', 'area', 'zone'] for c in df_meta.columns) else None
 
-    df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
+        df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
 
-    def map_elevation_class(val):
-        try:
-            num = float(val)
-            if num < 230.0:
-                return 'Low (< 230 m)'
-            elif 230.0 <= num <= 720.0:
-                return 'Mid (230–720 m)'
-            else:
-                return 'High (> 720 m)'
-        except (ValueError, TypeError):
-            return np.nan
+        def map_elevation_class(val):
+            try:
+                num = float(val)
+                if num < 230.0:
+                    return 'Low (< 230 m)'
+                elif 230.0 <= num <= 720.0:
+                    return 'Mid (230–720 m)'
+                else:
+                    return 'High (> 720 m)'
+            except (ValueError, TypeError):
+                return np.nan
 
-    df_meta['elev_mapped'] = df_meta[elev_col].apply(map_elevation_class)
-    elev_map = dict(zip(df_meta[code_col], df_meta['elev_mapped']))
-    
-    if region_col:
-        region_map = dict(zip(df_meta[code_col], df_meta[region_col]))
-    else:
-        region_map = {code: "All Regions" for code in df_meta[code_col]}
+        df_meta['elev_mapped'] = df_meta[elev_col].apply(map_elevation_class)
 
+        # Load Boundary Shapefile if available
+        shapefile_path = None
+        for root, dirs, files in os.walk("."):
+            for file in files:
+                if file.endswith(".shp"):
+                    shapefile_path = os.path.join(root, file)
+                    break
+            if shapefile_path:
+                break
+        
+        gdf_boundary = gpd.read_file(shapefile_path) if shapefile_path else None
+        
+        return df_meta, code_col, elev_col, lat_col, lon_col, region_col, gdf_boundary
+    except Exception as e:
+        st.error(f"Error loading metadata or shapefiles: {e}")
+        return None, None, None, None, None, None, None
+
+df_meta, code_col, elev_col, lat_col, lon_col, region_col, gdf_boundary = load_gis_and_metadata()
+
+if df_meta is None:
+    st.stop()
+
+elev_map = dict(zip(df_meta[code_col], df_meta['elev_mapped']))
+
+# Load observation and ERA5 datasets
+@st.cache_data
+def load_precipitation_data():
     obs_dicts = {}
     era_dicts = {}
-
     for d in durations:
         obs_file = f"OBS_ARF_corrected_{d}.xlsx"
         num_str = d.replace('h', '')
@@ -101,21 +128,18 @@ try:
         
         obs_dicts[d].columns = obs_dicts[d].columns.astype(str).str.strip()
         era_dicts[d].columns = era_dicts[d].columns.astype(str).str.strip()
+    return obs_dicts, era_dicts
 
-except Exception as e:
-    st.error(f"Error loading metadata or input files from repository: {e}")
-    st.stop()
+obs_dicts, era_dicts = load_precipitation_data()
 
 # =========================================================
-# 2. SIDEBAR FILTER & SELECTION CONTROLS
+# 2. SIDEBAR CONTROLS & STUDY AREA MAP
 # =========================================================
 st.sidebar.header("Filter & Select")
 
-# Region Selection
 all_regions = sorted(df_meta[region_col].dropna().unique().tolist()) if region_col else []
 selected_region = st.sidebar.selectbox("1. Select Region:", ["All"] + all_regions)
 
-# Filter stations based on region choice
 if selected_region != "All" and region_col:
     filtered_stations_df = df_meta[df_meta[region_col] == selected_region]
 else:
@@ -124,7 +148,6 @@ else:
 available_stations = sorted(filtered_stations_df[code_col].unique().tolist())
 selected_station = st.sidebar.selectbox("2. Select Station:", ["All Stations"] + available_stations)
 
-# Show Station Details Card if a specific station is picked
 if selected_station != "All Stations":
     st_row = df_meta[df_meta[code_col] == selected_station].iloc[0]
     st.sidebar.markdown(f"""
@@ -134,6 +157,32 @@ if selected_station != "All Stations":
         <b>Elevation:</b> {st_row[elev_col]} m ({st_row['elev_mapped']})
     </div>
     """, unsafe_allow_html=True)
+
+# Render Study Area Map in Sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("🗺️ Study Area Map")
+
+fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=300)
+if gdf_boundary is not None:
+    gdf_boundary.plot(ax=ax_map, color='#f7f7f7', edgecolor='#bdbdbd', linewidth=0.8)
+
+# Plot all station background points
+ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color='#9ecae1', s=12, edgecolor='none', alpha=0.7, label='Stations')
+
+# Highlight selected station or region
+if selected_station != "All Stations":
+    sel_row = df_meta[df_meta[code_col] == selected_station].iloc0 if hasattr(df_meta[df_meta[code_col] == selected_station], 'iloc0') else df_meta[df_meta[code_col] == selected_station].iloc[0]
+    ax_map.scatter([sel_row[lon_col]], [sel_row[lat_col]], color='#d95f02', s=45, marker='*', edgecolor='black', linewidth=0.5, label='Selected Station')
+    ax_map.set_title(f"Station: {selected_station}", fontsize=9, fontweight='bold')
+elif selected_region != "All" and region_col:
+    reg_df = df_meta[df_meta[region_col] == selected_region]
+    ax_map.scatter(reg_df[lon_col], reg_df[lat_col], color='#2b83ba', s=20, edgecolor='black', linewidth=0.3, label=selected_region)
+    ax_map.set_title(f"Region: {selected_region}", fontsize=9, fontweight='bold')
+else:
+    ax_map.set_title("Northern Italy Stations", fontsize=9, fontweight='bold')
+
+ax_map.axis('off')
+st.sidebar.pyplot(fig_map)
 
 # =========================================================
 # 3. DATA PROCESSING & SUMMARY STATISTICS COMPUTATION
@@ -147,7 +196,6 @@ def process_filtered_data(sel_region, sel_station):
         df_obs = obs_dicts[duration]
         df_era = era_dicts[duration]
         
-        # Determine valid stations based on sidebar filters
         if sel_station != "All Stations":
             target_stations = [sel_station]
         elif sel_region != "All" and region_col:
@@ -250,7 +298,7 @@ for i in range(6):
             obs_arr = pooled_data[dur]['OBS'][grp]
             era_arr = pooled_data[dur]['ERA5-Land'][grp]
             
-            if len(obs_arr) > 1: # KDE requires at least 2 points
+            if len(obs_arr) > 1:
                 sns.kdeplot(
                     obs_arr, ax=ax, color=palette[grp], linestyle='-', 
                     linewidth=1.6, label=f'{grp} OBS', cut=0
@@ -291,3 +339,15 @@ for i in range(6):
         ax.legend(handles=legend_elements, loc='center', fontsize=9.5, frameon=False, edgecolor='black')
 
 st.pyplot(fig)
+
+# =========================================================
+# 6. ENGINEERING ANALYSIS & CONCLUSION
+# =========================================================
+st.markdown("---")
+st.subheader("📌 Engineering Analysis & Conclusions")
+
+st.markdown("""
+* **Topographic Control on Convective Extremes:** Stratifying AMP series by elevation reveals distinct distributional shifts across low-land, mid-elevation, and alpine zones, highlighting how complex terrain modulates sub-daily convective storm intensity.
+* **Reanalysis Performance & Bias:** ERA5-Land exhibits varying degrees of fidelity relative to station gauges depending on elevation band and storm duration, particularly underestimating extreme percentiles ($P_{99}$) in complex high-elevation terrain due to grid-cell smoothing effects.
+* **Implications for Infrastructure Design:** Because generalized regional summaries fail to capture local microclimatic extremes, rigorous station-based validation is non-negotiable for reliable urban drainage and flood mitigation planning (Soto-Escobar et al., 2026).
+""")
