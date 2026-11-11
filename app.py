@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from scipy.stats import genextreme
+import geopandas as gpd
 import io
 
 st.set_page_config(page_title="Can ERA5-Land data be used for Engineering purpose (Design Return Level)?", layout="wide")
@@ -59,6 +60,19 @@ try:
 except Exception as e:
     st.error(f"Error loading files automatically from repository: {e}")
     st.stop()
+
+# Load Shapefile for Study Area Map (Make sure your shapefile is in the repo, e.g., 'italy_regions.shp')
+try:
+    shp_file = "italy_regions.shp"  # Update filename if your shapefile has a different name in GitHub
+    italy = gpd.read_file(shp_file).to_crs("EPSG:4326")
+    regions_list = [
+        "Piedmont", "Valle d'Aosta", "Liguria", "Lombardy", 
+        "Veneto", "Friuli Venezia Giulia", "Emilia-Romagna", "Trentino-Alto Adige"
+    ]
+    region_col = 'name' if 'name' in italy.columns else 'DEN_REG'
+    north_shp = italy[italy[region_col].isin(regions_list)]
+except Exception:
+    north_shp = None
 
 # =========================================================
 # 2. DATA PROCESSING, MAPPING & COMMON STATIONS
@@ -182,6 +196,28 @@ with col1:
         f"**Elevation:** {station_cache[selected_stn]['elev']} m"
     )
 
+    # Study Area Map Widget in Sidebar
+    st.markdown("---")
+    st.subheader("🗺️ Study Area Map")
+    if north_shp is not None and lat_col and lon_col:
+        fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=300)
+        north_shp.plot(ax=ax_map, color="#f0f2f6", edgecolor="#cbd5e1", linewidth=0.8)
+        
+        # Plot all stations
+        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#94a3b8", s=12, alpha=0.6, label="All Stations")
+        
+        # Highlight selected station
+        sel_lat = float(station_cache[selected_stn]['lat'])
+        sel_lon = float(station_cache[selected_stn]['lon'])
+        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=45, marker="*", zorder=5, label=f"Selected ({selected_stn})")
+        
+        ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
+        ax_map.axis('off')
+        ax_map.legend(fontsize=6, loc="lower right", frameon=True)
+        st.pyplot(fig_map)
+    else:
+        st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
+
 with col2:
     st.subheader(f"DDF Curves for Station: {selected_stn}")
     
@@ -290,7 +326,7 @@ else:
 
 st.info(analysis_text)
 st.markdown(feasibility_conclusion)
-# =========================================================
+
 # =========================================================
 # 6. REGIONAL & DATASET-WIDE PERFORMANCE SUMMARY (1h vs 24h)
 # =========================================================
