@@ -364,13 +364,4 @@ for i in range(6):
 st.pyplot(fig)
 
 # =========================================================
-# 6. ENGINEERING ANALYSIS & CONCLUSION
-# =========================================================
-st.markdown("---")
-st.subheader("📌 Engineering Analysis & Conclusions")
 
-st.markdown("""
-* **Topographic Control on Convective Extremes:** Stratifying AMP series by elevation or analyzing individual stations reveals distinct distributional shifts, highlighting how complex terrain modulates sub-daily convective storm intensity.
-* **Reanalysis Performance & Bias:** ERA5-Land exhibits varying degrees of fidelity relative to station gauges depending on elevation band and storm duration, particularly underestimating extreme percentiles ($P_{99}$) in complex high-elevation terrain due to grid-cell smoothing effects.
-* **Implications for Infrastructure Design:** Because generalized regional summaries fail to capture local microclimatic extremes, rigorous station-based validation is non-negotiable for reliable urban drainage and flood mitigation planning (Soto-Escobar et al., 2026).
-""")
