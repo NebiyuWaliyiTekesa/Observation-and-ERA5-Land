@@ -271,7 +271,7 @@ with tab2:
 # 5. AUTOMATED ENGINEERING FEASIBILITY & ANALYSIS REPORT
 # =========================================================
 st.markdown("---")
-st.subheader("📝 Automated Engineering Feasibility Conclusion (Station Specific)")
+st.subheader("📝 Engineering Feasibility Conclusion (Station Specific)")
 
 pbias_1h = df_results[df_results["Duration"] == "1h"]["PBIAS_pct"].mean()
 pbias_24h = df_results[df_results["Duration"] == "24h"]["PBIAS_pct"].mean()
