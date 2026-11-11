@@ -209,7 +209,7 @@ with col2:
     ax.grid(True, which="both", ls="--", alpha=0.3)
     
     ax.set_title(
-        f"Station: {selected_stn} | Region: {stn_data['region']} | Elev: {stn_data['elev']} m | Lat: {stn_data['lat']}°, Lon: {stn_data['lon']}°",
+        f"Station: {selected_stn} | Region: {stn_data['region']} | Elev: {stn_data['elev']} m | Lat: {stn_data['lat']}° | Lon: {stn_data['lon']}°",
         fontsize=10,
         fontweight='bold'
     )
