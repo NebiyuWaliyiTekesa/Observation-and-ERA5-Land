@@ -34,7 +34,10 @@ try:
     
     for dur in durations_str:
         obs_file = f"OBS_ARF_corrected_{dur}.xlsx"
-        era_file = f"{dur}hr.xlsx"
+        
+        # Strip the 'h' from dur (e.g., '1h' becomes '1') and add 'hr.xlsx'
+        num_str = dur.replace('h', '')
+        era_file = f"{num_str}hr.xlsx"
         
         # Load and deduplicate observation file
         df_obs = pd.read_excel(obs_file)
