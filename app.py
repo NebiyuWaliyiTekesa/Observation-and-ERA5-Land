@@ -24,12 +24,12 @@ st.info(
 # =========================================================
 # 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
 # =========================================================
-st.sidebar.header("📁 Data Source Status")
-st.sidebar.success("Files loaded automatically from repository!")
+#st.sidebar.header("📁 Data Source Status")
+#st.sidebar.success("Files loaded automatically from repository!")
 
-st.sidebar.markdown("---")
-st.sidebar.header("Advanced Options")
-show_ci = st.sidebar.checkbox("Show 90% Bootstrap Confidence Intervals", value=False)
+#st.sidebar.markdown("---")
+#st.sidebar.header("Advanced Options")
+#show_ci = st.sidebar.checkbox("Show 90% Bootstrap Confidence Intervals", value=False)
 
 durations_str = ["1h", "3h", "6h", "12h", "24h"]
 dur_hours = np.array([1, 3, 6, 12, 24])
