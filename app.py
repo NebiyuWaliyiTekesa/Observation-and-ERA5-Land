@@ -165,34 +165,34 @@ def precompute_station_curves(station_list):
 station_cache = precompute_station_curves(common_stations)
 
 # =========================================================
-# 3. INTERACTIVE SIDEBAR & FILTERS
+# 3. SIDEBAR CONTROLS & STUDY AREA MAP
 # =========================================================
-st.subheader("Filter & Select")
+st.sidebar.header("Filter & Select")
 
 available_regions = ['All'] + sorted(list(set(station_cache[s]['region'] for s in common_stations)))
-selected_region = st.selectbox("1. Select Region:", available_regions)
+selected_region = st.sidebar.selectbox("1. Select Region:", available_regions)
 
 if selected_region == 'All':
     filtered_stations = common_stations
 else:
     filtered_stations = [s for s in common_stations if station_cache[s]['region'] == selected_region]
 
-selected_stn = st.selectbox("2. Select Station:", ["All Stations"] + filtered_stations)
+selected_stn = st.sidebar.selectbox("2. Select Station:", ["All Stations"] + filtered_stations)
 
 if selected_stn != "All Stations":
-    st.info(
+    st.sidebar.info(
         f"**Selected Station:** `{selected_stn}`\n\n"
         f"**Region:** {station_cache[selected_stn]['region']}\n\n"
         f"**Elevation:** {station_cache[selected_stn]['elev']} m"
     )
 else:
-    st.info(f"**Region Filter:** {selected_region} ({len(filtered_stations)} stations active)")
+    st.sidebar.info(f"**Region Filter:** {selected_region} ({len(filtered_stations)} stations active)")
 
-# Study Area Map Widget
-st.markdown("---")
-st.subheader("🗺️ Study Area Map")
+# Study Area Map Widget in Sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("🗺️ Study Area Map")
 if north_shp is not None and lat_col and lon_col:
-    fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
+    fig_map, ax_map = plt.subplots(figsize=(3.5, 3.5), dpi=300)
     north_shp.plot(ax=ax_map, color="#f7f7f7", edgecolor="#bdbdbd", linewidth=0.8)
     
     ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#9ecae1", s=12, edgecolor='none', alpha=0.7, label="Stations")
@@ -211,9 +211,9 @@ if north_shp is not None and lat_col and lon_col:
     
     ax_map.axis('off')
     ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2, frameon=False)
-    st.pyplot(fig_map)
+    st.sidebar.pyplot(fig_map)
 else:
-    st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
+    st.sidebar.info("Shapefile (`italy_regions.shp`) or coordinates not found.")
 
 # =========================================================
 # 4. MAIN CONTENT AREA (DDF CURVES & TABLES)
@@ -293,10 +293,31 @@ if selected_stn != "All Stations":
             st.markdown("**ERA5-Land Raw Return Levels (mm)**")
             st.dataframe(df_results.pivot(index="Duration", columns="Return_Period_yr", values="ERA5-Land_mm"), use_container_width=True)
 
+    # Engineering Feasibility Report
+    st.markdown("---")
+    st.subheader("📝 Engineering Feasibility Conclusion (Station Specific)")
+
+    pbias_1h = df_results[df_results["Duration"] == "1h"]["PBIAS_pct"].mean()
+    pbias_24h = df_results[df_results["Duration"] == "24h"]["PBIAS_pct"].mean()
+
+    analysis_text = f"""
+    For station **{selected_stn}**, the comparison between ground station observations and ERA5-Land reanalysis design return levels highlights distinct duration-dependent behaviors:
+
+    - **Short-Duration Performance (1h – 3h):** ERA5-Land exhibits pronounced underestimation, with average biases dropping significantly (e.g., around **{pbias_1h:.1f}%** for 1-hour accumulation). This limitation is primarily driven by reanalysis grid-cell averaging and the coarse spatial/temporal representation of convective storms, making raw sub-daily extremes unsuitable for direct urban or small-catchment engineering design without rigorous bias correction.
+    - **Long-Duration Performance (12h – 24h):** As accumulation periods increase, the representativeness of ERA5-Land improves substantially. At the 24-hour duration, the bias shifts closer to zero (averaging roughly **{pbias_24h:.1f}%**), demonstrating that reanalysis data captures synoptic-scale aggregate precipitation volumes much more reliably.
+    """
+
+    if abs(pbias_24h) < 15.0:
+        feasibility_conclusion = f"✅ **Conclusion:** While **unsuitable for short-duration applications** due to severe underestimation, ERA5-Land shows good reliability for **daily (24-hr) cumulative engineering assessments** at this station (Bias ~ {pbias_24h:.1f}%). It can be cautiously used for macro-scale hydrological planning or after applying scaling factors."
+    else:
+        feasibility_conclusion = f"❌ **Conclusion:** ERA5-Land exhibits noticeable discrepancies across durations at this station (24h bias is ~ {pbias_24h:.1f}%). Direct use for critical design return levels is **not recommended** without local calibration or quantile mapping."
+
+    st.info(analysis_text)
+    st.markdown(feasibility_conclusion)
+
 else:
     st.subheader(f"📈 Aggregated DDF Curves (Selection: Region = {selected_region}, All Stations)")
     
-    # Compute mean curves across filtered stations
     mean_obs_curves = {dur: np.zeros(len(return_periods)) for dur in durations_str}
     mean_era_curves = {dur: np.zeros(len(return_periods)) for dur in durations_str}
     counts = {dur: np.zeros(len(return_periods)) for dur in durations_str}
