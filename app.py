@@ -163,7 +163,7 @@ with col1:
     st.subheader("Filter & Select")
     
     available_regions = ['All'] + sorted(list(set(station_cache[s]['region'] for s in common_stations)))
-    selected_region = st.selectbox("1. Select Region / Regime:", available_regions)
+    selected_region = st.selectbox("1. Select Region:", available_regions)
     
     if selected_region == 'All':
         filtered_stations = common_stations
@@ -174,7 +174,7 @@ with col1:
         st.warning("No stations found in this region.")
         st.stop()
         
-    selected_stn = st.selectbox("2. Choose Station Code:", filtered_stations)
+    selected_stn = st.selectbox("2. Select Station:", filtered_stations)
     
     st.info(
         f"**Selected Station:** `{selected_stn}`\n\n"
