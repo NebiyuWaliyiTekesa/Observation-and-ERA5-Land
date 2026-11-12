@@ -9,9 +9,9 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-st.set_page_config(page_title="ERA5-Land vs Observations: Station PBIAS & KGE Evaluation", layout="wide")
+st.set_page_config(page_title="ERA5-Land vs Observations: Station & Regional Evaluation", layout="wide")
 
-st.title("🌧️ ERA5-Land vs Observations: Station PBIAS & KGE Evaluation")
+st.title("🌧️ ERA5-Land vs Observations: Station & Regional Evaluation")
 
 # Methodology Note
 st.info(
@@ -117,7 +117,6 @@ def compute_all_station_metrics():
             if stn not in df_obs.columns or stn not in df_era.columns:
                 continue
             
-            # Align temporally by common year index
             sub_obs = df_obs[stn]
             sub_era = df_era[stn]
             aligned = pd.concat([sub_obs, sub_era], axis=1, join='inner').dropna()
@@ -128,12 +127,10 @@ def compute_all_station_metrics():
             o = aligned.iloc[:, 0]
             e = aligned.iloc[:, 1]
             
-            # Exact PBIAS Calculation: 100 * sum(sim - obs) / sum(obs)
             obs_sum = o.sum()
             sim_sum = e.sum()
             pbias = 100.0 * (sim_sum - obs_sum) / obs_sum if obs_sum != 0 else np.nan
             
-            # Exact KGE Calculation
             obs_mean = o.mean()
             sim_mean = e.mean()
             obs_std = o.std(ddof=1)
@@ -171,7 +168,7 @@ if df_metrics.empty:
     st.stop()
 
 # =========================================================
-# 4. INTERACTIVE STATION INSPECTOR & PLOTTER
+# 4. INTERACTIVE STATION INSPECTOR & DUAL SUBPLOT
 # =========================================================
 st.markdown("---")
 st.subheader("🔍 Station-Specific Performance Inspection")
@@ -185,30 +182,30 @@ filtered_stns = common_stations if selected_reg == 'All' else sorted(list(df_met
 with col_sel2:
     selected_station = st.selectbox("Select Station Code:", filtered_stns)
 
-# Extract metrics for the selected station across durations
 stn_df = df_metrics[df_metrics['Station_Code'] == selected_station].sort_values('Duration')
 
 st.markdown(f"**Metrics Summary for Station `{selected_station}`:**")
 st.dataframe(stn_df[['Duration', 'Elevation_Class', 'Elevation_m', 'Valid_Years', 'PBIAS', 'KGE']], use_container_width=True)
 
-# Plot PBIAS and KGE across durations for the selected station
-fig_stn, ax_stn = plt.subplots(figsize=(8, 4), dpi=300)
-ax_stn.plot(stn_df['Duration'], stn_df['PBIAS'], marker='o', linestyle='-', color='#d95f02', linewidth=2, label='PBIAS (%)')
-ax_stn.axhline(0, color='black', linestyle='--', linewidth=0.8, alpha=0.7)
-ax_stn.set_ylabel("PBIAS (%)", fontweight='bold', color='#d95f02')
-ax_stn.set_xlabel("Duration", fontweight='bold')
-ax_stn.set_title(f"Station {selected_station} — Evaluation Metrics Across Durations", fontweight='bold', fontsize=10)
-ax_stn.grid(True, linestyle=':', alpha=0.6)
+# Station Plot: Two separate subplots stacked vertically (1 for PBIAS, 1 for KGE)
+fig_stn, (ax_pb, ax_kg) = plt.subplots(2, 1, figsize=(8, 5), dpi=300, sharex=True)
 
-ax_stn2 = ax_stn.twinx()
-ax_stn2.plot(stn_df['Duration'], stn_df['KGE'], marker='s', linestyle='--', color='#2b83ba', linewidth=2, label='KGE')
-ax_stn2.set_ylabel("Kling-Gupta Efficiency (KGE)", fontweight='bold', color='#2b83ba')
-ax_stn2.set_ylim(-1.1, 1.1)
+# PBIAS Subplot
+ax_pb.plot(stn_df['Duration'], stn_df['PBIAS'], marker='o', linestyle='-', color='#d95f02', linewidth=1.8, label='PBIAS (%)')
+ax_pb.axhline(0, color='black', linestyle='--', linewidth=0.8, alpha=0.7)
+ax_pb.set_ylabel("PBIAS (%)", fontweight='bold', color='#d95f02')
+ax_pb.set_title(f"Station {selected_station} — Evaluation Metrics Across Durations", fontweight='bold', fontsize=10)
+ax_pb.grid(True, linestyle=':', alpha=0.6)
+ax_pb.legend(loc='upper right', frameon=True, fontsize=8)
 
-# Combined legend
-lines_1, labels_1 = ax_stn.get_legend_handles_labels()
-lines_2, labels_2 = ax_stn2.get_legend_handles_labels()
-ax_stn.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right', frameon=True, fontsize=8)
+# KGE Subplot
+ax_kg.plot(stn_df['Duration'], stn_df['KGE'], marker='s', linestyle='--', color='#2b83ba', linewidth=1.8, label='KGE')
+ax_kg.axhline(1.0, color='black', linestyle='--', linewidth=0.8, alpha=0.7)
+ax_kg.set_ylabel("Kling-Gupta Efficiency", fontweight='bold', color='#2b83ba')
+ax_kg.set_xlabel("Duration", fontweight='bold')
+ax_kg.set_ylim(-1.1, 1.1)
+ax_kg.grid(True, linestyle=':', alpha=0.6)
+ax_kg.legend(loc='upper right', frameon=True, fontsize=8)
 
 plt.tight_layout()
 st.pyplot(fig_stn)
@@ -230,90 +227,131 @@ with tab_elev:
     st.dataframe(df_elev_medians, use_container_width=True)
 
 # =========================================================
-# 6. PUBLICATION-READY BOXPLOTS & EXCEL EXPORT
+# 6. PUBLICATION-READY BOXPLOTS (ELEVATION & REGIONAL)
 # =========================================================
 st.markdown("---")
 st.subheader("📈 Dataset-Wide Publication Boxplots")
 
-col_plot, col_dl = st.columns([3, 1])
+elevation_palette = {
+    elevation_labels[0]: "#2b83ba",
+    elevation_labels[1]: "#fdae61",
+    elevation_labels[2]: "#d7191c"
+}
+dark_grey = "#2b2b2b"
 
-with col_plot:
-    elevation_palette = {
-        elevation_labels[0]: "#2b83ba",
-        elevation_labels[1]: "#fdae61",
-        elevation_labels[2]: "#d7191c"
-    }
-    dark_grey = "#2b2b2b"
+# --- A. Elevation-Based Boxplots ---
+st.markdown("**1. Performance by Elevation Class**")
+fig_pub_elev, axes_elev = plt.subplots(1, 2, figsize=(8.0, 3.5), dpi=300)
+plot_metrics = [
+    {'key': 'PBIAS', 'label': 'Percent Bias (%)', 'ref': 0.0, 'letter': 'a'},
+    {'key': 'KGE',   'label': 'Kling–Gupta Efficiency (KGE)', 'ref': 1.0, 'letter': 'b'}
+]
 
-    fig_pub, axes = plt.subplots(1, 2, figsize=(8.0, 3.5), dpi=300)
-    plot_metrics = [
-        {'key': 'PBIAS', 'label': 'Percent Bias (%)', 'ref': 0.0, 'letter': 'a'},
-        {'key': 'KGE',   'label': 'Kling–Gupta Efficiency (KGE)', 'ref': 1.0, 'letter': 'b'}
-    ]
-
-    for idx, metric_info in enumerate(plot_metrics):
-        ax = axes[idx]
-        m_key = metric_info['key']
-        m_label = metric_info['label']
-        ref_line = metric_info['ref']
-        
-        ax.set_axisbelow(True)
-        ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7, color='gray')
-        
-        sns.boxplot(
-            data=df_metrics,
-            x='Duration',
-            y=m_key,
-            hue='Elevation_Class',
-            hue_order=elevation_labels,
-            order=durations_str,
-            width=0.6,
-            showfliers=False,
-            palette=elevation_palette,
-            boxprops=dict(alpha=0.85, edgecolor=dark_grey, linewidth=0.8),
-            whiskerprops=dict(color=dark_grey, linewidth=0.8),
-            capprops=dict(color=dark_grey, linewidth=0.8),
-            medianprops=dict(color="black", linewidth=1.2),
-            ax=ax
-        )
-        
-        if ref_line is not None:
-            ax.axhline(ref_line, color='black', linestyle='--', linewidth=0.9, zorder=1)
-        
-        ax.set_title(f"({metric_info['letter']})", loc='left', fontweight='bold', pad=6)
-        ax.set_xlabel("Duration", fontweight='bold', labelpad=4)
-        ax.set_ylabel(m_label, fontweight='bold', labelpad=4)
-        
-        if idx == 0:
-            ax.legend(
-                title="Elevation Class", 
-                title_fontsize='7',
-                frameon=True, 
-                facecolor='white', 
-                edgecolor='none',
-                framealpha=0.85, 
-                loc='upper left'
-            )
-        else:
-            if ax.get_legend() is not None:
-                ax.get_legend().remove()
-                
-        sns.despine(ax=ax, top=True, right=True)
-
-    plt.tight_layout()
-    st.pyplot(fig_pub)
-
-with col_dl:
-    st.markdown("**Export Workbook**")
-    output_excel_buffer = io.BytesIO()
-    with pd.ExcelWriter(output_excel_buffer, engine='openpyxl') as writer:
-        df_metrics.to_excel(writer, sheet_name='Raw_Station_Metrics', index=False)
-        df_region_medians.to_excel(writer, sheet_name='Regional_Medians')
-        df_elev_medians.to_excel(writer, sheet_name='Elevation_Medians')
+for idx, metric_info in enumerate(plot_metrics):
+    ax = axes_elev[idx]
+    m_key = metric_info['key']
+    m_label = metric_info['label']
+    ref_line = metric_info['ref']
     
-    st.download_button(
-        label="📥 Download Complete Metrics (Excel)",
-        data=output_excel_buffer.getvalue(),
-        file_name="ERA5_Land_PBIAS_KGE_Evaluation.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ax.set_axisbelow(True)
+    ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7, color='gray')
+    
+    sns.boxplot(
+        data=df_metrics,
+        x='Duration',
+        y=m_key,
+        hue='Elevation_Class',
+        hue_order=elevation_labels,
+        order=durations_str,
+        width=0.6,
+        showfliers=False,
+        palette=elevation_palette,
+        boxprops=dict(alpha=0.85, edgecolor=dark_grey, linewidth=0.8),
+        whiskerprops=dict(color=dark_grey, linewidth=0.8),
+        capprops=dict(color=dark_grey, linewidth=0.8),
+        medianprops=dict(color="black", linewidth=1.2),
+        ax=ax
     )
+    
+    if ref_line is not None:
+        ax.axhline(ref_line, color='black', linestyle='--', linewidth=0.9, zorder=1)
+    
+    ax.set_title(f"({metric_info['letter']})", loc='left', fontweight='bold', pad=6)
+    ax.set_xlabel("Duration", fontweight='bold', labelpad=4)
+    ax.set_ylabel(m_label, fontweight='bold', labelpad=4)
+    
+    if idx == 0:
+        ax.legend(title="Elevation Class", title_fontsize='7', frameon=True, facecolor='white', edgecolor='none', framealpha=0.85, loc='upper left')
+    else:
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+            
+    sns.despine(ax=ax, top=True, right=True)
+
+plt.tight_layout()
+st.pyplot(fig_pub_elev)
+
+
+# --- B. Region-Based Boxplots ---
+st.markdown("**2. Performance by Region**")
+fig_pub_reg, axes_reg = plt.subplots(1, 2, figsize=(9.0, 3.8), dpi=300)
+available_regions = sorted(list(df_metrics['Region'].dropna().unique()))
+
+for idx, metric_info in enumerate(plot_metrics):
+    ax = axes_reg[idx]
+    m_key = metric_info['key']
+    m_label = metric_info['label']
+    ref_line = metric_info['ref']
+    
+    ax.set_axisbelow(True)
+    ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7, color='gray')
+    
+    sns.boxplot(
+        data=df_metrics,
+        x='Duration',
+        y=m_key,
+        hue='Region',
+        order=durations_str,
+        width=0.7,
+        showfliers=False,
+        palette="Set2",
+        boxprops=dict(alpha=0.85, edgecolor=dark_grey, linewidth=0.8),
+        whiskerprops=dict(color=dark_grey, linewidth=0.8),
+        capprops=dict(color=dark_grey, linewidth=0.8),
+        medianprops=dict(color="black", linewidth=1.2),
+        ax=ax
+    )
+    
+    if ref_line is not None:
+        ax.axhline(ref_line, color='black', linestyle='--', linewidth=0.9, zorder=1)
+    
+    ax.set_title(f"({metric_info['letter']})", loc='left', fontweight='bold', pad=6)
+    ax.set_xlabel("Duration", fontweight='bold', labelpad=4)
+    ax.set_ylabel(m_label, fontweight='bold', labelpad=4)
+    
+    if idx == 0:
+        ax.legend(title="Region", title_fontsize='7', frameon=True, facecolor='white', edgecolor='none', framealpha=0.85, bbox_to_anchor=(1.02, 1), loc='upper left')
+    else:
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+            
+    sns.despine(ax=ax, top=True, right=True)
+
+plt.tight_layout()
+st.pyplot(fig_pub_reg)
+
+
+# --- C. Export Workbook ---
+st.markdown("---")
+output_excel_buffer = io.BytesIO()
+with pd.ExcelWriter(output_excel_buffer, engine='openpyxl') as writer:
+    df_metrics.to_excel(writer, sheet_name='Raw_Station_Metrics', index=False)
+    df_region_medians.to_excel(writer, sheet_name='Regional_Medians')
+    df_elev_medians.to_excel(writer, sheet_name='Elevation_Medians')
+
+st.download_button(
+    label="📥 Download Complete Metrics (Excel)",
+    data=output_excel_buffer.getvalue(),
+    file_name="ERA5_Land_PBIAS_KGE_Evaluation.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
