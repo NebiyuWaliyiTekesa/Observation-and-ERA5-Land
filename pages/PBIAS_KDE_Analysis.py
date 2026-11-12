@@ -28,7 +28,7 @@ st.info(
 )
 
 # =========================================================
-# 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY / PATHS
+# 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
 # =========================================================
 durations_str = ["1h", "3h", "6h", "12h", "24h"]
 dur_hours = np.array([1, 3, 6, 12, 24])
@@ -79,7 +79,7 @@ except Exception:
     north_shp = None
 
 # =========================================================
-# 2. DATA PROCESSING & ELEVATION MAPPING
+# 2. METADATA PROCESSING & ELEVATION MAPPING
 # =========================================================
 code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
 elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
@@ -171,7 +171,9 @@ def precompute_station_curves(station_list):
 
 station_cache = precompute_station_curves(common_stations)
 
-# Vectorized metrics computation for all stations across durations
+# =========================================================
+# 3. VECTORIZED EVALUATION METRICS (PBIAS & KGE)
+# =========================================================
 def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
     common_cols = df_obs.columns.intersection(df_sim.columns).intersection(pd.Index(elevation_map.keys()))
     obs = df_obs[common_cols]
@@ -181,10 +183,12 @@ def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
     obs = obs.where(valid_mask)
     sim = sim.where(valid_mask)
     
+    # PBIAS Calculation
     obs_sum = obs.sum(axis=0)
     sim_sum = sim.sum(axis=0)
     pbias = np.where(obs_sum != 0, 100.0 * (sim_sum - obs_sum) / obs_sum, np.nan)
     
+    # KGE Calculation
     obs_mean = obs.mean(axis=0)
     sim_mean = sim.mean(axis=0)
     obs_std = obs.std(axis=0, ddof=1)
@@ -226,7 +230,7 @@ def generate_dataset_metrics():
 df_metrics = generate_dataset_metrics()
 
 # =========================================================
-# 3. INTERACTIVE DASHBOARD VIEW (REGION -> STATION SELECTOR)
+# 4. INTERACTIVE DASHBOARD VIEW (REGION -> STATION SELECTOR)
 # =========================================================
 col1, col2 = st.columns([1, 3])
 
@@ -312,7 +316,7 @@ with col2:
     st.pyplot(fig)
 
 # =========================================================
-# 4. DATASET-WIDE PUBLICATION PLOT & ELEVATION METRICS
+# 5. DATASET-WIDE PUBLICATION PLOT & ELEVATION METRICS
 # =========================================================
 st.markdown("---")
 st.subheader("📈 Dataset-Wide Elevation & Duration Performance (PBIAS & KGE)")
@@ -395,12 +399,16 @@ with col_summary_tbl:
     st.markdown("**Median Metrics Table**")
     df_medians = df_metrics.groupby(['Duration', 'Elevation_Class'], observed=False)[['PBIAS', 'KGE']].median()
     pbias_pivot = df_medians['PBIAS'].unstack(level='Elevation_Class').reindex(durations_str).round(2)
+    kge_pivot = df_medians['KGE'].unstack(level='Elevation_Class').reindex(durations_str).round(2)
+    
+    st.markdown("*(PBIAS Medians)*")
     st.dataframe(pbias_pivot, use_container_width=True)
 
-    # Download button for median metrics
+    # Download button for median metrics and raw metrics
     output_excel_buffer = io.BytesIO()
     with pd.ExcelWriter(output_excel_buffer, engine='openpyxl') as writer:
         pbias_pivot.to_excel(writer, sheet_name='PBIAS_Medians')
+        kge_pivot.to_excel(writer, sheet_name='KGE_Medians')
         df_metrics.to_excel(writer, sheet_name='Raw_Station_Metrics', index=False)
     
     st.download_button(
@@ -409,5 +417,3 @@ with col_summary_tbl:
         file_name="Median_Metrics_Duration_Elevation.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-<FollowUp label="Want me to add an interactive correlation scatter plot between station elevation and PBIAS?" query="Yes, add an interactive scatter plot showing how PBIAS varies with station elevation across different durations."/>
