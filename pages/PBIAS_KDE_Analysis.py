@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-from scipy.stats import genextreme
-import geopandas as gpd
 import seaborn as sns
 import io
 import os
@@ -12,28 +9,23 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-st.set_page_config(page_title="Can ERA5-Land data be used for Engineering purpose (Design Return Level)?", layout="wide")
+st.set_page_config(page_title="ERA5-Land vs Observations: PBIAS & KGE Evaluation", layout="wide")
 
-st.title("🌧️ Can ERA5-Land data be used for Engineering purpose (Design Return Level)?")
+st.title("🌧️ ERA5-Land vs Observations: PBIAS & KGE Evaluation")
 
 # Methodology Note
 st.info(
     "**Methodology:**\n\n"
-    "To assess the suitability of ERA5-Land reanalysis data for urban infrastructure design and other engineering "
-    "applications, we derived Duration-Depth-Frequency (DDF) curves for each station for both observed "
-    "and ERA5-Land AMPs (1951-2023). The AMPs (observed and ERA5-Land) were fitted using the Generalized Extreme Value (GEV) "
-    "distribution, and the DDF curves were computed for 1-, 3-, 6-, 12-, and 24-hr durations and return periods ($T$) "
-    "of 20, 50, 100, and 200 years (Soto-Escobar et al., 2026). We then quantified relative bias, PBIAS, and KGE across storm duration "
-    "and elevation classes."
+    "To assess the suitability of ERA5-Land reanalysis precipitation data against ground station observations "
+    "across Northern Italy (1951-2023), we compute continuous evaluation metrics—**Percent Bias (PBIAS)** "
+    "and **Kling–Gupta Efficiency (KGE)**—disaggregated across storm durations (1h, 3h, 6h, 12h, 24h), "
+    "elevation classes, and administrative regions."
 )
 
 # =========================================================
 # 1. AUTOMATIC FILE LOADING FROM GITHUB REPOSITORY
 # =========================================================
 durations_str = ["1h", "3h", "6h", "12h", "24h"]
-dur_hours = np.array([1, 3, 6, 12, 24])
-thresholds = {"1h": 300, "3h": 500, "6h": 600, "12h": 800, "24h": 1000}
-return_periods = [20, 50, 100, 200]
 elevation_labels = ["Low (< 230 m)", "Mid (230–720 m)", "High (> 720 m)"]
 
 try:
@@ -49,14 +41,14 @@ try:
         
         # Load and deduplicate observation file
         df_obs = pd.read_excel(obs_file)
-        anno_col_obs = [c for c in df_obs.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_obs.columns] else df_obs.columns[0]
+        anno_col_obs = [c for c in df_obs.columns if str(c).lower() in ['anno', 'year', 'date']][0] if any(str(c).lower() in ['anno', 'year', 'date'] for c in df_obs.columns) else df_obs.columns[0]
         df_obs = df_obs.set_index(anno_col_obs)
         df_obs.columns = df_obs.columns.astype(str).str.strip()
         obs_dict[dur] = df_obs.loc[:, ~df_obs.columns.duplicated(keep="first")]
         
         # Load and deduplicate ERA5 file
         df_era = pd.read_excel(era_file)
-        anno_col_era = [c for c in df_era.columns if str(c).lower() == 'anno'][0] if 'anno' in [str(c).lower() for c in df_era.columns] else df_era.columns[0]
+        anno_col_era = [c for c in df_era.columns if str(c).lower() in ['anno', 'year', 'date']][0] if any(str(c).lower() in ['anno', 'year', 'date'] for c in df_era.columns) else df_era.columns[0]
         df_era = df_era.set_index(anno_col_era)
         df_era.columns = df_era.columns.astype(str).str.strip()
         era_dict[dur] = df_era.loc[:, ~df_era.columns.duplicated(keep="first")]
@@ -65,33 +57,14 @@ except Exception as e:
     st.error(f"Error loading files automatically from repository: {e}")
     st.stop()
 
-# Load Shapefile for Study Area Map
-try:
-    shp_file = "italy_regions.shp"
-    italy = gpd.read_file(shp_file).to_crs("EPSG:4326")
-    regions_list = [
-        "Piedmont", "Valle d'Aosta", "Liguria", "Lombardy", 
-        "Veneto", "Friuli Venezia Giulia", "Emilia-Romagna", "Trentino-Alto Adige"
-    ]
-    region_col = 'name' if 'name' in italy.columns else 'DEN_REG'
-    north_shp = italy[italy[region_col].isin(regions_list)]
-except Exception:
-    north_shp = None
-
 # =========================================================
-# 2. METADATA PROCESSING & ELEVATION MAPPING
+# 2. METADATA PROCESSING & REGIONAL/ELEVATION MAPPING
 # =========================================================
 code_col = [c for c in df_meta.columns if c.lower() in ['code', 'station_code', 'id', 'station']][0]
 elev_col = [c for c in df_meta.columns if c.lower() in ['elev', 'elevation', 'alt', 'altitude', 'z']][0]
 df_meta[code_col] = df_meta[code_col].astype(str).str.strip()
 
-lat_candidates = [c for c in df_meta.columns if c.lower() in ['lat', 'latitude', 'y']]
-lat_col = lat_candidates[0] if lat_candidates else None
-
-lon_candidates = [c for c in df_meta.columns if c.lower() in ['lon', 'long', 'longitude', 'x']]
-lon_col = lon_candidates[0] if lon_candidates else None
-
-region_col_candidates = [c for c in df_meta.columns if c.lower() in ['region', 'zone', 'area', 'province', 'basin']]
+region_col_candidates = [c for c in df_meta.columns if c.lower() in ['region', 'zone', 'area', 'province', 'basin', 'den_reg', 'name']]
 has_region_col = len(region_col_candidates) > 0
 reg_col = region_col_candidates[0] if has_region_col else None
 
@@ -106,28 +79,13 @@ df_meta['elevation_mapped'] = pd.cut(
 
 raw_elev_map = dict(zip(df_meta[code_col], df_meta[elev_col]))
 elevation_map = dict(zip(df_meta[code_col], df_meta['elevation_mapped']))
-raw_lat_map = dict(zip(df_meta[code_col], df_meta[lat_col])) if lat_col else {}
-raw_lon_map = dict(zip(df_meta[code_col], df_meta[lon_col])) if lon_col else {}
 
 if has_region_col:
     region_map = dict(zip(df_meta[code_col], df_meta[reg_col].astype(str)))
 else:
-    region_map = {stn: str(elevation_map.get(stn, 'Unknown')) for stn in raw_elev_map.keys()}
+    region_map = {stn: "Northern Italy" for stn in raw_elev_map.keys()}
 
-def get_gev_depth(series, return_periods):
-    data = series.dropna().values
-    if len(data) < 5:
-        return [np.nan] * len(return_periods)
-    try:
-        c, loc, scale = genextreme.fit(data)
-        depths = []
-        for T in return_periods:
-            p = 1.0 - (1.0 / T)
-            depths.append(genextreme.ppf(p, c, loc=loc, scale=scale))
-        return depths
-    except Exception:
-        return [np.nan] * len(return_periods)
-
+# Find common stations across all duration files and metadata
 common_stations = None
 for dur in durations_str:
     stns = [c for c in obs_dict[dur].columns if c in era_dict[dur].columns and c in raw_elev_map]
@@ -139,42 +97,13 @@ for dur in durations_str:
 common_stations = sorted(list(common_stations))
 
 if len(common_stations) == 0:
-    st.error("No matching station codes found across your metadata and duration files. Check column headers.")
+    st.error("No matching station codes found across metadata and duration files. Check column headers.")
     st.stop()
-
-@st.cache_data
-def precompute_station_curves(station_list):
-    cache = {}
-    for stn in station_list:
-        obs_curves, era_curves = {}, {}
-        for dur in durations_str:
-            obs_s = obs_dict[dur][stn]
-            era_s = era_dict[dur][stn]
-            
-            thr = thresholds[dur]
-            obs_s = obs_s.where((obs_s > 0) & (obs_s <= thr))
-            era_s = era_s.where((era_s > 0) & (era_s <= thr))
-            
-            obs_curves[dur] = get_gev_depth(obs_s, return_periods)
-            era_curves[dur] = get_gev_depth(era_s, return_periods)
-            
-        cache[stn] = {
-            "obs": obs_curves,
-            "era": era_curves,
-            "elev": raw_elev_map.get(stn, "N/A"),
-            "lat": raw_lat_map.get(stn, "N/A"),
-            "lon": raw_lon_map.get(stn, "N/A"),
-            "region": region_map.get(stn, "Unknown"),
-            "elevation_class": str(elevation_map.get(stn, "Unknown"))
-        }
-    return cache
-
-station_cache = precompute_station_curves(common_stations)
 
 # =========================================================
 # 3. VECTORIZED EVALUATION METRICS (PBIAS & KGE)
 # =========================================================
-def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
+def compute_vectorized_metrics(df_obs, df_sim, elevation_map, region_map, duration):
     common_cols = df_obs.columns.intersection(df_sim.columns).intersection(pd.Index(elevation_map.keys()))
     obs = df_obs[common_cols]
     sim = df_sim[common_cols]
@@ -183,12 +112,12 @@ def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
     obs = obs.where(valid_mask)
     sim = sim.where(valid_mask)
     
-    # PBIAS Calculation (Numpy array)
+    # PBIAS Calculation
     obs_sum = obs.sum(axis=0)
     sim_sum = sim.sum(axis=0)
     pbias = np.where(obs_sum != 0, 100.0 * (sim_sum - obs_sum) / obs_sum, np.nan)
     
-    # KGE Calculation (Pandas Series indexed by common_cols)
+    # KGE Calculation
     obs_mean = obs.mean(axis=0)
     sim_mean = sim.mean(axis=0)
     obs_std = obs.std(axis=0, ddof=1)
@@ -208,7 +137,9 @@ def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
         records.append({
             'Duration': duration,
             'Station_Code': col,
+            'Region': region_map.get(col, 'Unknown'),
             'Elevation_Class': elevation_map[col],
+            'Elevation_m': raw_elev_map.get(col, np.nan),
             'PBIAS': pbias[i] if isinstance(pbias, np.ndarray) else pbias.loc[col],
             'KGE': kge.loc[col] if hasattr(kge, 'loc') else kge[i]
         })
@@ -220,114 +151,65 @@ def generate_dataset_metrics():
     for duration in durations_str:
         df_o = obs_dict[duration].align(era_dict[duration], join='inner', axis=0)[0]
         df_e = era_dict[duration].align(obs_dict[duration], join='inner', axis=0)[1]
-        metrics_results.extend(compute_vectorized_metrics(df_o, df_e, elevation_map, duration))
+        metrics_results.extend(compute_vectorized_metrics(df_o, df_e, elevation_map, region_map, duration))
     
     df_m = pd.DataFrame(metrics_results)
     df_m['Duration'] = pd.Categorical(df_m['Duration'], categories=durations_str, ordered=True)
     df_m['Elevation_Class'] = pd.Categorical(df_m['Elevation_Class'], categories=elevation_labels, ordered=True)
-    return df_m.sort_values(by=['Duration', 'Elevation_Class']).reset_index(drop=True)
+    return df_m.sort_values(by=['Duration', 'Region', 'Elevation_Class']).reset_index(drop=True)
 
 df_metrics = generate_dataset_metrics()
 
 # =========================================================
-# 4. INTERACTIVE DASHBOARD VIEW (REGION -> STATION SELECTOR)
+# 4. DASHBOARD VIEW: FILTERING & STATION METRICS EXPLORER
 # =========================================================
-col1, col2 = st.columns([1, 3])
+st.subheader("🔍 Station-Level Performance Explorer")
 
-with col1:
-    st.subheader("Filter & Select")
-    
-    available_regions = ['All'] + sorted(list(set(station_cache[s]['region'] for s in common_stations)))
-    selected_region = st.selectbox("1. Select Region:", available_regions)
-    
-    if selected_region == 'All':
-        filtered_stations = common_stations
-    else:
-        filtered_stations = [s for s in common_stations if station_cache[s]['region'] == selected_region]
-    
-    if not filtered_stations:
-        st.warning("No stations found in this region.")
-        st.stop()
-        
-    selected_stn = st.selectbox("2. Select Station:", filtered_stations)
-    
-    st.info(
-        f"**Selected Station:** `{selected_stn}`\n\n"
-        f"**Region:** {station_cache[selected_stn]['region']}\n\n"
-        f"**Elevation:** {station_cache[selected_stn]['elev']} m\n\n"
-        f"**Elevation Class:** {station_cache[selected_stn]['elevation_class']}"
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    selected_region_filter = st.selectbox(
+        "Filter by Region:", 
+        ['All'] + sorted(list(df_metrics['Region'].dropna().unique()))
+    )
+with col_f2:
+    selected_dur_filter = st.selectbox(
+        "Filter by Duration:", 
+        ['All'] + durations_str
     )
 
-    # Study Area Map Widget in Sidebar
-    st.markdown("---")
-    st.subheader("🗺️ Study Area Map")
-    if north_shp is not None and lat_col and lon_col:
-        fig_map, ax_map = plt.subplots(figsize=(4, 4), dpi=600)
-        north_shp.plot(ax=ax_map, color="#f0f2f6", edgecolor="#cbd5e1", linewidth=0.8)
-        
-        ax_map.scatter(df_meta[lon_col], df_meta[lat_col], color="#94a3b8", s=10, alpha=0.6, label="Stations")
-        
-        sel_lat = float(station_cache[selected_stn]['lat'])
-        sel_lon = float(station_cache[selected_stn]['lon'])
-        ax_map.scatter([sel_lon], [sel_lat], color="#d95f02", s=35, marker="*", zorder=5, label=f"Selected ({selected_stn})")
-        
-        ax_map.set_title(f"Location Map: {selected_stn}", fontsize=8, fontweight='bold')
-        ax_map.axis('off')
-        ax_map.legend(fontsize=6, loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=2, frameon=False)
-        st.pyplot(fig_map)
-    else:
-        st.info("Shapefile (`italy_regions.shp`) or coordinates not found for map rendering.")
+df_filtered_stations = df_metrics.copy()
+if selected_region_filter != 'All':
+    df_filtered_stations = df_filtered_stations[df_filtered_stations['Region'] == selected_region_filter]
+if selected_dur_filter != 'All':
+    df_filtered_stations = df_filtered_stations[df_filtered_stations['Duration'] == selected_dur_filter]
 
-with col2:
-    st.subheader(f"DDF Curves for Station: {selected_stn}")
-    
-    stn_data = station_cache[selected_stn]
-    colors = ["#2b83ba", "#d95f02", "#7570b3", "#e7298a"]
-    
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=600)
-    
-    for idx_T, T in enumerate(return_periods):
-        obs_y = [stn_data["obs"][dur][idx_T] for dur in durations_str]
-        era_y = [stn_data["era"][dur][idx_T] for dur in durations_str]
-        
-        ax.plot(dur_hours, obs_y, marker="o", linestyle="-", color=colors[idx_T],
-                linewidth=1.5, markersize=5, label=f"Obs ({T} yr)")
-        ax.plot(dur_hours, era_y, marker="s", linestyle="--", color=colors[idx_T],
-                linewidth=1.5, markersize=5, markerfacecolor="white", label=f"ERA5 ({T} yr)")
-
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xticks(dur_hours)
-    ax.set_xticklabels([f"{h}h" for h in dur_hours], fontsize=9)
-    ax.set_xlim(0.6, 30)
-    
-    ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
-    ax.grid(True, which="both", ls="--", alpha=0.3)
-    
-    ax.set_title(
-        f"Station: {selected_stn} | Class: {stn_data['elevation_class']} | Elev: {stn_data['elev']} m | Lat: {stn_data['lat']}° | Lon: {stn_data['lon']}°",
-        fontsize=10,
-        fontweight='bold'
-    )
-    ax.set_xlabel("Duration", fontsize=9, fontweight='bold')
-    ax.set_ylabel("Return Level (mm)", fontsize=9, fontweight='bold')
-    ax.legend(frameon=True, fontsize=7, loc="upper left", ncol=2)
-    
-    st.pyplot(fig)
+st.dataframe(df_filtered_stations, use_container_width=True)
 
 # =========================================================
-# 5. DATASET-WIDE PUBLICATION PLOT & ELEVATION METRICS
+# 5. REGIONAL & ELEVATION MEDIAN AGGREGATES
 # =========================================================
 st.markdown("---")
-st.subheader("📈 Dataset-Wide Elevation & Duration Performance (PBIAS & KGE)")
+st.subheader("📊 Regional & Elevation Performance Aggregates (Medians)")
 
-st.write(
-    "Evaluation of overall model performance categorized across **Duration** and **Elevation Class** "
-    "using Percent Bias ($\text{PBIAS}$) and Kling–Gupta Efficiency ($\text{KGE}$). "
-    "Solid/dashed reference lines mark optimal performance thresholds ($\text{PBIAS} = 0\%$, $\text{KGE} = 1.0$). "
-)
+tab_reg, tab_elev = st.tabs(["🌍 By Region", "⛰️ By Elevation Class"])
 
-col_plot, col_summary_tbl = st.columns([3, 2])
+with tab_reg:
+    df_region_medians = df_metrics.groupby(['Duration', 'Region'], observed=False)[['PBIAS', 'KGE']].median().unstack(level='Region').round(2)
+    st.write("Median PBIAS (%) and KGE grouped by Region across durations:")
+    st.dataframe(df_region_medians, use_container_width=True)
+
+with tab_elev:
+    df_elev_medians = df_metrics.groupby(['Duration', 'Elevation_Class'], observed=False)[['PBIAS', 'KGE']].median().unstack(level='Elevation_Class').round(2)
+    st.write("Median PBIAS (%) and KGE grouped by Elevation Class across durations:")
+    st.dataframe(df_elev_medians, use_container_width=True)
+
+# =========================================================
+# 6. PUBLICATION-READY FIGURE & EXCEL DOWNLOAD
+# =========================================================
+st.markdown("---")
+st.subheader("📈 Publication-Ready Performance Boxplots (Duration vs Elevation Class)")
+
+col_plot, col_dl = st.columns([3, 1])
 
 with col_plot:
     elevation_palette = {
@@ -337,7 +219,7 @@ with col_plot:
     }
     dark_grey = "#2b2b2b"
 
-    fig_pub, axes = plt.subplots(1, 2, figsize=(7.0, 3.2), dpi=300)
+    fig_pub, axes = plt.subplots(1, 2, figsize=(8.0, 3.5), dpi=300)
     plot_metrics = [
         {'key': 'PBIAS', 'label': 'Percent Bias (%)', 'ref': 0.0, 'letter': 'a'},
         {'key': 'KGE',   'label': 'Kling–Gupta Efficiency (KGE)', 'ref': 1.0, 'letter': 'b'}
@@ -395,25 +277,19 @@ with col_plot:
     plt.tight_layout()
     st.pyplot(fig_pub)
 
-with col_summary_tbl:
-    st.markdown("**Median Metrics Table**")
-    df_medians = df_metrics.groupby(['Duration', 'Elevation_Class'], observed=False)[['PBIAS', 'KGE']].median()
-    pbias_pivot = df_medians['PBIAS'].unstack(level='Elevation_Class').reindex(durations_str).round(2)
-    kge_pivot = df_medians['KGE'].unstack(level='Elevation_Class').reindex(durations_str).round(2)
+with col_dl:
+    st.markdown("**Export Results**")
+    st.write("Download complete computed station-level metrics and regional summaries as an Excel workbook.")
     
-    st.markdown("*(PBIAS Medians)*")
-    st.dataframe(pbias_pivot, use_container_width=True)
-
-    # Download button for median metrics and raw metrics
     output_excel_buffer = io.BytesIO()
     with pd.ExcelWriter(output_excel_buffer, engine='openpyxl') as writer:
-        pbias_pivot.to_excel(writer, sheet_name='PBIAS_Medians')
-        kge_pivot.to_excel(writer, sheet_name='KGE_Medians')
         df_metrics.to_excel(writer, sheet_name='Raw_Station_Metrics', index=False)
+        df_region_medians.to_excel(writer, sheet_name='Regional_Medians')
+        df_elev_medians.to_excel(writer, sheet_name='Elevation_Medians')
     
     st.download_button(
-        label="📥 Download Elevation Summary (Excel)",
+        label="📥 Download Complete Metrics (Excel)",
         data=output_excel_buffer.getvalue(),
-        file_name="Median_Metrics_Duration_Elevation.xlsx",
+        file_name="ERA5_Land_PBIAS_KGE_Evaluation.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
