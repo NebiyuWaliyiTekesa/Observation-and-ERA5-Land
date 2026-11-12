@@ -183,12 +183,12 @@ def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
     obs = obs.where(valid_mask)
     sim = sim.where(valid_mask)
     
-    # PBIAS Calculation
+    # PBIAS Calculation (Numpy array)
     obs_sum = obs.sum(axis=0)
     sim_sum = sim.sum(axis=0)
     pbias = np.where(obs_sum != 0, 100.0 * (sim_sum - obs_sum) / obs_sum, np.nan)
     
-    # KGE Calculation
+    # KGE Calculation (Pandas Series indexed by common_cols)
     obs_mean = obs.mean(axis=0)
     sim_mean = sim.mean(axis=0)
     obs_std = obs.std(axis=0, ddof=1)
@@ -209,8 +209,8 @@ def compute_vectorized_metrics(df_obs, df_sim, elevation_map, duration):
             'Duration': duration,
             'Station_Code': col,
             'Elevation_Class': elevation_map[col],
-            'PBIAS': pbias[i],
-            'KGE': kge[i]
+            'PBIAS': pbias[i] if isinstance(pbias, np.ndarray) else pbias.loc[col],
+            'KGE': kge.loc[col] if hasattr(kge, 'loc') else kge[i]
         })
     return records
 
